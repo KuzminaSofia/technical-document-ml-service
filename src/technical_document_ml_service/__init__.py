@@ -1,0 +1,1 @@
+"""корневой пакет проекта technical_document_ml_service"""
