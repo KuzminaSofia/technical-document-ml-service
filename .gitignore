@@ -14,3 +14,6 @@ venv/
 ruff_cache/
 build/
 dist/
+
+storage/postgres/*
+storage/rabbitmq/*

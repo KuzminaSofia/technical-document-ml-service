@@ -1,0 +1,42 @@
+services:
+  app:
+    build:
+      context: ./app
+    container_name: technical-document-app
+    env_file:
+      - ./app/.env
+    volumes:
+      - ./app/src:/app/src
+    depends_on:
+      - database
+      - rabbitmq
+
+  web-proxy:
+    build:
+      context: ./web-proxy
+    container_name: technical-document-web-proxy
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: technical-document-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./storage/rabbitmq:/var/lib/rabbitmq
+
+  database:
+    image: postgres:16
+    container_name: technical-document-database
+    environment:
+      POSTGRES_DB: technical_document_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./storage/postgres:/var/lib/postgresql/data
