@@ -24,7 +24,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: technical-document-rabbitmq
-    restart: unless-stopped
+    restart: on-failure
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -39,4 +39,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
-      - ./storage/postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
