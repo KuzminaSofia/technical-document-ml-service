@@ -8,43 +8,66 @@
 
 ## реализовано в рамках задания №1
 
-В данном репозитории представлена **объектная модель ML-сервиса**, которая будет использоваться как основа для следующих этапов курса
+---
 
-Объектная модель включает обязательные сущности:
+## Что реализовано на текущем этапе
+
+### Задание №1 — объектная модель ML-сервиса
+
+В проекте спроектирована доменная объектная модель, отражающая базовую бизнес-логику сервиса
+
+Реализованы основные сущности предметной области:
+
 - `User` — пользователь сервиса;
-- `MLModel` — ML-модель;
-- `MLTask` — задача на выполнение ML-обработки;
+- `MLModel` — базовая ML-модель;
+- `TechnicalDocumentExtractionModel` — ML-модель для обработки технической документации;
+- `MLTask` — базовая ML-задача;
+- `DocumentExtractionTask` — задача на обработку документов;
 - `PredictionResult` — результат работы модели;
-- `MLRequestHistoryRecord` — история ML-запросов;
-- `Transaction` — операции пополнения и списания баланса
+- `MLRequestHistoryRecord` — история запросов;
+- `Transaction` — базовая транзакция;
+- `CreditTransaction` — пополнение баланса;
+- `DebitTransaction` — списание средств;
+- `UploadedDocument` — загруженный документ;
+- `ValidationIssue` — ошибка валидации входных данных.
 
-Дополнительно добавлена предметная сущность:
-- `UploadedDocument` — загруженный документ
+### Задание №2 — структура проекта и Docker Compose
 
-Также добавлена вспомогательная сущность:
-- `ValidationIssue` — описание ошибок валидации входных данных
+Проект приведен к воспроизводимой инфраструктурной структуре и подготовлен к запуску через Docker Compose
 
-## Применение принципов ООП
+Описаны 4 сервиса:
 
-### Инкапсуляция
-Поля классов скрыты через `_protected`-атрибуты, доступ к ним осуществляется через свойства и методы
+- `app` — backend-приложение;
+- `web-proxy` — reverse proxy на Nginx;
+- `rabbitmq` — брокер сообщений;
+- `database` — база данных PostgreSQL
 
-### Наследование
-Использованы базовые и производные классы:
-- `Transaction` → `CreditTransaction`, `DebitTransaction`
-- `MLModel` → `TechnicalDocumentExtractionModel`
-- `MLTask` → `DocumentExtractionTask`
+---
 
-### Полиморфизм
-Полиморфное поведение реализовано через абстрактные методы:
-- `Transaction.apply(...)`
-- `MLModel.predict(...)`
-- `MLTask.validate_input(...)`
-
-## Структура проекта
+## Текущая структура проекта
 
 ```text
-src/technical_document_ml_service/domain/
-├─ enums.py
-├─ exceptions.py
-└─ entities.py
+technical-document-ml-service/
+├── app/
+│   ├── .env
+│   ├── .dockerignore
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── src/
+│       └── technical_document_ml_service/
+│           ├── __init__.py
+│           ├── main.py
+│           └── domain/
+│               ├── __init__.py
+│               ├── entities.py
+│               ├── enums.py
+│               └── exceptions.py
+├── web-proxy/
+│   ├── Dockerfile
+│   └── nginx.conf
+├── storage/
+│   └── rabbitmq/
+├── docker-compose.yml
+├── pyproject.toml
+├── README.md
+└── .gitignore
