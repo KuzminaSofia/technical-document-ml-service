@@ -44,6 +44,7 @@ class User(BaseEntity):
         balance_credits: Decimal = Decimal("0"),
         is_active: bool = True,
         entity_id: UUID | None = None,
+        created_at: datetime | None = None,
     ) -> None:
         super().__init__(entity_id=entity_id)
         self._email: str = email
@@ -51,7 +52,7 @@ class User(BaseEntity):
         self._role: UserRole = role
         self._balance_credits: Decimal = balance_credits
         self._is_active: bool = is_active
-        self._created_at: datetime = datetime.now(UTC)
+        self._created_at: datetime = created_at or datetime.now(UTC)
 
     @property
     def email(self) -> str:

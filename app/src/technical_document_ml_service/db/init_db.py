@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from technical_document_ml_service.domain.enums import DocumentType
+from technical_document_ml_service.domain.enums import DocumentType, UserRole
 
 from technical_document_ml_service.db.base import Base
 from technical_document_ml_service.db.models import MLModelORM, UserORM
@@ -82,14 +82,14 @@ def seed_initial_data(session: Session) -> None:
         session,
         email="demo.user@example.com",
         password_hash=_hash_demo_password("demo-user-password"),
-        role="user",
+        role=UserRole.USER.value,
         balance_credits=Decimal("100.00"),
     )
     _ensure_user(
         session,
         email="demo.admin@example.com",
         password_hash=_hash_demo_password("demo-admin-password"),
-        role="admin",
+        role=UserRole.ADMIN.value,
         balance_credits=Decimal("1000.00"),
     )
 
