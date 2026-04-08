@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt
 
 COPY src /app/src
+COPY tests /app/tests
 
 ENV PYTHONPATH=/app/src
 

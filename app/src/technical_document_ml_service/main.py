@@ -1,14 +1,24 @@
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+
+from technical_document_ml_service.db.init_db import init_db
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    yield
 
 
 app = FastAPI(
     title="Technical Document ML Service",
-    description="Сервис извлечения и проверки данных из технической документации",
-    version="0.1.0",
+    lifespan=lifespan,
 )
 
 
 @app.get("/health")
-def healthcheck() -> dict[str, str]:
-    """Проверка работоспособности приложения"""
+def health() -> dict[str, str]:
     return {"status": "ok"}
