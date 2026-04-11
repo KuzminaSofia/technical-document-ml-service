@@ -6,9 +6,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from technical_document_ml_service.db.models import TransactionORM, UserORM
-from technical_document_ml_service.domain.entities import CreditTransaction, DebitTransaction
-from technical_document_ml_service.domain.exceptions import NotFoundError
+from technical_document_ml_service.db.models import TransactionORM
+from technical_document_ml_service.domain.entities import (
+    CreditTransaction,
+    DebitTransaction,
+    Transaction,
+)
+from technical_document_ml_service.services.orm_queries import get_user_orm_or_raise
 from technical_document_ml_service.services.dto import TransactionHistoryItem
 from technical_document_ml_service.services.mappers import (
     orm_to_domain_user,
@@ -17,33 +21,27 @@ from technical_document_ml_service.services.mappers import (
 )
 
 
-def _get_user_orm_or_raise(session: Session, user_id: UUID) -> UserORM:
-    user_orm = session.get(UserORM, user_id)
-    if user_orm is None:
-        raise NotFoundError("Пользователь не найден.")
-    return user_orm
-
-
-def _persist_transaction(
+def record_transaction(
     session: Session,
     *,
-    transaction_id: UUID,
-    user_id: UUID,
-    task_id: UUID | None,
-    transaction_type: str,
-    amount: Decimal,
-    created_at,
-) -> TransactionORM:
+    transaction: Transaction,
+) -> TransactionHistoryItem:
+    """
+    сохранить уже созданную доменную транзакцию в БД
+    и вернуть DTO сохраненной записи
+    """
     transaction_orm = TransactionORM(
-        id=transaction_id,
-        user_id=user_id,
-        task_id=task_id,
-        transaction_type=transaction_type,
-        amount=amount,
-        created_at=created_at,
+        id=transaction.id,
+        user_id=transaction.user_id,
+        task_id=transaction.task_id,
+        transaction_type=transaction.transaction_type.value,
+        amount=transaction.amount,
+        created_at=transaction.created_at,
     )
     session.add(transaction_orm)
-    return transaction_orm
+    session.flush()
+
+    return transaction_orm_to_item(transaction_orm)
 
 
 def credit_balance(
@@ -57,7 +55,7 @@ def credit_balance(
     пополнить баланс пользователя и записать транзакцию
     возвращает новый баланс и DTO созданной транзакции
     """
-    user_orm = _get_user_orm_or_raise(session, user_id)
+    user_orm = get_user_orm_or_raise(session, user_id)
     domain_user = orm_to_domain_user(user_orm)
 
     transaction = CreditTransaction(
@@ -68,20 +66,9 @@ def credit_balance(
     transaction.apply(domain_user)
 
     sync_user_orm_from_domain(user_orm, domain_user)
+    transaction_item = record_transaction(session, transaction=transaction)
 
-    transaction_orm = _persist_transaction(
-        session,
-        transaction_id=transaction.id,
-        user_id=transaction.user_id,
-        task_id=transaction.task_id,
-        transaction_type=transaction.transaction_type.value,
-        amount=transaction.amount,
-        created_at=transaction.created_at,
-    )
-
-    session.flush()
-
-    return user_orm.balance_credits, transaction_orm_to_item(transaction_orm)
+    return user_orm.balance_credits, transaction_item
 
 
 def debit_balance(
@@ -98,7 +85,7 @@ def debit_balance(
     - InsufficientBalanceError
     - NotFoundError
     """
-    user_orm = _get_user_orm_or_raise(session, user_id)
+    user_orm = get_user_orm_or_raise(session, user_id)
     domain_user = orm_to_domain_user(user_orm)
 
     transaction = DebitTransaction(
@@ -109,20 +96,9 @@ def debit_balance(
     transaction.apply(domain_user)
 
     sync_user_orm_from_domain(user_orm, domain_user)
+    transaction_item = record_transaction(session, transaction=transaction)
 
-    transaction_orm = _persist_transaction(
-        session,
-        transaction_id=transaction.id,
-        user_id=transaction.user_id,
-        task_id=transaction.task_id,
-        transaction_type=transaction.transaction_type.value,
-        amount=transaction.amount,
-        created_at=transaction.created_at,
-    )
-
-    session.flush()
-
-    return user_orm.balance_credits, transaction_orm_to_item(transaction_orm)
+    return user_orm.balance_credits, transaction_item
 
 
 def get_user_transactions(

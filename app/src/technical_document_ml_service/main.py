@@ -10,6 +10,7 @@ from technical_document_ml_service.api.routers import (
     balance_router,
     health_router,
     history_router,
+    predict_router,
     users_router,
 )
 from technical_document_ml_service.db.init_db import init_db
@@ -33,3 +34,4 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(balance_router)
 app.include_router(history_router)
+app.include_router(predict_router)

@@ -416,13 +416,14 @@ class TechnicalDocumentExtractionModel(MLModel):
         description: str,
         prediction_cost: Decimal,
         supported_document_types: set[DocumentType],
+        is_active: bool = True,
         entity_id: UUID | None = None,
     ) -> None:
         super().__init__(
             name=name,
             description=description,
             prediction_cost=prediction_cost,
-            is_active=True,
+            is_active=is_active,
             entity_id=entity_id,
         )
         self._supported_document_types: set[DocumentType] = supported_document_types

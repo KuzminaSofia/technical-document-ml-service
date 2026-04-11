@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, status
 
-from technical_document_ml_service.api.deps import SessionDep
+from technical_document_ml_service.api.deps import ReadSessionDep, SessionDep
 from technical_document_ml_service.api.schemas.auth import (
     AuthResponse,
     LoginRequest,
@@ -24,12 +24,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
 )
 def register(payload: RegisterRequest, session: SessionDep) -> AuthResponse:
-    with session.begin():
-        user = register_user(
-            session,
-            email=payload.email,
-            password=payload.password,
-        )
+    """зарегистрировать нового пользователя"""
+    user = register_user(
+        session,
+        email=payload.email,
+        password=payload.password,
+    )
 
     return AuthResponse(
         message="Пользователь успешно зарегистрирован.",
@@ -38,7 +38,8 @@ def register(payload: RegisterRequest, session: SessionDep) -> AuthResponse:
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(payload: LoginRequest, session: SessionDep) -> AuthResponse:
+def login(payload: LoginRequest, session: ReadSessionDep) -> AuthResponse:
+    """аутентифицировать пользователя по email и паролю"""
     user = authenticate_user(
         session,
         email=payload.email,
