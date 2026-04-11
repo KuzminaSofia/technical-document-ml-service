@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from technical_document_ml_service.db.models import UserORM
 from technical_document_ml_service.domain.entities import User
 from technical_document_ml_service.domain.enums import UserRole
-from technical_document_ml_service.domain.exceptions import DomainError
+from technical_document_ml_service.domain.exceptions import UserAlreadyExistsError
 from technical_document_ml_service.services.mappers import orm_to_domain_user
 
 
@@ -24,13 +24,13 @@ def create_user(
 ) -> User:
     """
     создать пользователя и сохранить его в БД
-    raise DomainError, если пользователь с таким email уже существует
+    raise UserAlreadyExistsError, если пользователь с таким email уже существует
     """
     existing_user = session.scalar(
         select(UserORM).where(UserORM.email == email)
     )
     if existing_user is not None:
-        raise DomainError("Пользователь с таким email уже существует.")
+        raise UserAlreadyExistsError("Пользователь с таким email уже существует.")
 
     domain_user = User(
         email=email,

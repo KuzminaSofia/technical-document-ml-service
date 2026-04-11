@@ -79,9 +79,9 @@ class User(BaseEntity):
         """вернуть дату и время создания пользователя"""
         return self._created_at
 
-    def check_password_hash(self, candidate_hash: str) -> bool:
-        """проверить совпадение хэша пароля"""
-        return self._password_hash == candidate_hash
+    def check_password(self, raw_password: str, hasher) -> bool:
+        """проверить пароль через переданную функцию верификации"""
+        return hasher(raw_password, self._password_hash)
 
     def can_afford(self, amount: Decimal) -> bool:
         """проверить, хватает ли пользователю средств на операцию"""

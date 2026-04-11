@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from technical_document_ml_service.db.models import TransactionORM, UserORM
 from technical_document_ml_service.domain.entities import CreditTransaction, DebitTransaction
-from technical_document_ml_service.domain.exceptions import DomainError
+from technical_document_ml_service.domain.exceptions import NotFoundError
 from technical_document_ml_service.services.dto import TransactionHistoryItem
 from technical_document_ml_service.services.mappers import (
     orm_to_domain_user,
@@ -20,7 +20,7 @@ from technical_document_ml_service.services.mappers import (
 def _get_user_orm_or_raise(session: Session, user_id: UUID) -> UserORM:
     user_orm = session.get(UserORM, user_id)
     if user_orm is None:
-        raise DomainError("Пользователь не найден.")
+        raise NotFoundError("Пользователь не найден.")
     return user_orm
 
 
@@ -96,7 +96,7 @@ def debit_balance(
     доменные исключения наружу:
     - InvalidAmountError
     - InsufficientBalanceError
-    - DomainError
+    - NotFoundError
     """
     user_orm = _get_user_orm_or_raise(session, user_id)
     domain_user = orm_to_domain_user(user_orm)

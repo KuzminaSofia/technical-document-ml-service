@@ -5,6 +5,22 @@ class DomainError(Exception):
     """базовое исключение доменного слоя"""
 
 
+class NotFoundError(DomainError):
+    """ошибка, возникающая при обращении к отсутствующей сущности"""
+
+
+class UserAlreadyExistsError(DomainError):
+    """ошибка, возникающая при попытке создать уже существующего пользователя"""
+
+
+class AuthenticationError(DomainError):
+    """ошибка аутентификации пользователя"""
+
+
+class AuthorizationError(DomainError):
+    """ошибка авторизации пользователя"""
+
+
 class InsufficientBalanceError(DomainError):
     """ошибка, возникающая при недостаточном балансе пользователя"""
 
