@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections.abc import Callable
 
 import pika
 
@@ -60,13 +61,13 @@ def _reject_message(
 
 
 def _handle_message(
+    worker_id: str,
     channel: pika.adapters.blocking_connection.BlockingChannel,
     method: pika.spec.Basic.Deliver,
     _properties: pika.BasicProperties,
     body: bytes,
 ) -> None:
     """обработать одно сообщение из очереди"""
-    worker_id = _get_worker_id()
     delivery_tag = method.delivery_tag
 
     try:
@@ -80,9 +81,11 @@ def _handle_message(
         _reject_message(channel, delivery_tag, requeue=False)
         return
 
-    session = SessionLocal()
+    session = None
 
     try:
+        session = SessionLocal()
+
         result = process_document_prediction_task(
             session,
             task_id=message.task_id,
@@ -114,12 +117,59 @@ def _handle_message(
             message.task_id,
             exc,
         )
-        if session.in_transaction():
+
+        if session is not None and session.in_transaction():
             session.rollback()
-        _reject_message(channel, delivery_tag, requeue=True)
+
+        if method.redelivered:
+            LOGGER.error(
+                "worker_id=%s | task_id=%s | Повторная обработка снова завершилась ошибкой. "
+                "Сообщение будет отклонено без requeue, чтобы избежать бесконечного цикла.",
+                worker_id,
+                message.task_id,
+            )
+            _reject_message(channel, delivery_tag, requeue=False)
+        else:
+            LOGGER.info(
+                "worker_id=%s | task_id=%s | Сообщение будет возвращено в очередь для повторной попытки.",
+                worker_id,
+                message.task_id,
+            )
+            _reject_message(channel, delivery_tag, requeue=True)
 
     finally:
-        session.close()
+        if session is not None:
+            session.close()
+
+
+def _build_message_handler(
+    worker_id: str,
+) -> Callable[
+    [
+        pika.adapters.blocking_connection.BlockingChannel,
+        pika.spec.Basic.Deliver,
+        pika.BasicProperties,
+        bytes,
+    ],
+    None,
+]:
+    """построить callback обработки сообщений для конкретного воркера"""
+
+    def callback(
+        channel: pika.adapters.blocking_connection.BlockingChannel,
+        method: pika.spec.Basic.Deliver,
+        properties: pika.BasicProperties,
+        body: bytes,
+    ) -> None:
+        _handle_message(
+            worker_id=worker_id,
+            channel=channel,
+            method=method,
+            _properties=properties,
+            body=body,
+        )
+
+    return callback
 
 
 def run_prediction_worker() -> None:
@@ -128,6 +178,7 @@ def run_prediction_worker() -> None:
 
     worker_id = _get_worker_id()
     reconnect_delay_seconds = _get_reconnect_delay_seconds()
+    message_handler = _build_message_handler(worker_id)
 
     LOGGER.info(
         "worker_id=%s | Запуск worker-а обработки задач | queue=%s",
@@ -145,7 +196,7 @@ def run_prediction_worker() -> None:
 
                 channel.basic_consume(
                     queue=app_settings.rabbitmq_queue_name,
-                    on_message_callback=_handle_message,
+                    on_message_callback=message_handler,
                     auto_ack=False,
                 )
 
