@@ -23,12 +23,29 @@ SessionLocal = sessionmaker(
 
 
 def get_db_session() -> Generator[Session, None, None]:
-    """генератор сессии БД для сервисов и dependency injection"""
+    """
+    write-session для запросов, которые могут изменять состояние
+    после успешного запроса выполняет commit, при ошибке rollback
+    """
     session = SessionLocal()
     try:
         yield session
+        session.commit()
     except Exception:
         session.rollback()
         raise
     finally:
+        session.close()
+
+
+def get_read_session() -> Generator[Session, None, None]:
+    """
+    read-only session для запросов чтения
+    не коммитит, в конце запроса откатывает активную транзакцию
+    """
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.rollback()
         session.close()
