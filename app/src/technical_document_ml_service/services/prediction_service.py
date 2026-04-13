@@ -29,10 +29,6 @@ from technical_document_ml_service.domain.exceptions import (
     TaskExecutionError,
 )
 from technical_document_ml_service.services.billing_service import record_transaction
-from technical_document_ml_service.services.orm_queries import (
-    get_model_orm_by_name_or_raise,
-    get_user_orm_or_raise,
-)
 from technical_document_ml_service.services.document_storage_service import (
     IncomingDocumentData,
     StoredDocumentData,
@@ -45,6 +41,10 @@ from technical_document_ml_service.services.history_service import (
 from technical_document_ml_service.services.mappers import (
     orm_to_domain_user,
     sync_user_orm_from_domain,
+)
+from technical_document_ml_service.services.orm_queries import (
+    get_model_orm_by_name_or_raise,
+    get_user_orm_or_raise,
 )
 
 
@@ -82,7 +82,7 @@ def _parse_supported_document_types(values: list[str]) -> set[DocumentType]:
     return parsed
 
 
-def _model_orm_to_domain(model_orm: MLModelORM) -> TechnicalDocumentExtractionModel:
+def model_orm_to_domain(model_orm: MLModelORM) -> TechnicalDocumentExtractionModel:
     """преобразовать ORM-модель в доменную ML-модель"""
     if model_orm.model_kind != "technical_document_extraction":
         raise TaskExecutionError("Неподдерживаемый тип ML-модели.")
@@ -99,7 +99,7 @@ def _model_orm_to_domain(model_orm: MLModelORM) -> TechnicalDocumentExtractionMo
     )
 
 
-def _build_domain_documents(
+def build_domain_documents(
     *,
     owner_id: UUID,
     stored_documents: list[StoredDocumentData],
@@ -122,7 +122,7 @@ def _build_domain_documents(
     return domain_documents
 
 
-def _persist_uploaded_documents(
+def persist_uploaded_documents(
     session: Session,
     *,
     documents: list[UploadedDocument],
@@ -147,7 +147,7 @@ def _persist_uploaded_documents(
     return document_orms
 
 
-def _persist_task(
+def persist_task(
     session: Session,
     *,
     task: DocumentExtractionTask,
@@ -173,7 +173,7 @@ def _persist_task(
     return task_orm
 
 
-def _persist_prediction_result(
+def persist_prediction_result(
     session: Session,
     *,
     task_id: UUID,
@@ -203,7 +203,7 @@ def _persist_prediction_result(
     return result_orm
 
 
-def _ensure_prediction_can_start(
+def ensure_prediction_can_start(
     *,
     user: User,
     model: TechnicalDocumentExtractionModel,
@@ -241,9 +241,9 @@ def execute_document_prediction(
         model_orm = get_model_orm_by_name_or_raise(session, model_name)
 
         domain_user = orm_to_domain_user(user_orm)
-        domain_model = _model_orm_to_domain(model_orm)
+        domain_model = model_orm_to_domain(model_orm)
 
-        _ensure_prediction_can_start(
+        ensure_prediction_can_start(
             user=domain_user,
             model=domain_model,
         )
@@ -254,7 +254,7 @@ def execute_document_prediction(
         )
         saved_paths = [document.storage_path for document in stored_documents]
 
-        domain_documents = _build_domain_documents(
+        domain_documents = build_domain_documents(
             owner_id=user_id,
             stored_documents=stored_documents,
         )
@@ -270,16 +270,16 @@ def execute_document_prediction(
 
         sync_user_orm_from_domain(user_orm, domain_user)
 
-        document_orms = _persist_uploaded_documents(
+        document_orms = persist_uploaded_documents(
             session,
             documents=domain_documents,
         )
-        _persist_task(
+        persist_task(
             session,
             task=task,
             document_orms=document_orms,
         )
-        _persist_prediction_result(
+        persist_prediction_result(
             session,
             task_id=task.id,
             result=result,
