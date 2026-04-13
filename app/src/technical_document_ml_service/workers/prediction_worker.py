@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+import logging
+import os
+import time
+
+import pika
+
+from technical_document_ml_service.core.config import app_settings
+from technical_document_ml_service.db.session import SessionLocal
+from technical_document_ml_service.domain.exceptions import NotFoundError
+from technical_document_ml_service.messaging.contracts import PredictionTaskMessage
+from technical_document_ml_service.messaging.rabbitmq import (
+    configure_consumer_qos,
+    declare_prediction_queue,
+    open_rabbitmq_connection,
+)
+from technical_document_ml_service.services.prediction_processing_service import (
+    process_document_prediction_task,
+)
+
+
+LOGGER = logging.getLogger("technical_document_ml_service.prediction_worker")
+
+
+def _configure_logging() -> None:
+    """настроить базовое логирование воркера"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
+
+
+def _get_worker_id() -> str:
+    """получить идентификатор воркера из окружения"""
+    return os.getenv("WORKER_ID", "worker-unknown")
+
+
+def _get_reconnect_delay_seconds() -> int:
+    """получить интервал ожидания перед повторным подключением"""
+    return int(os.getenv("WORKER_RECONNECT_DELAY_SECONDS", "5"))
+
+
+def _ack_message(
+    channel: pika.adapters.blocking_connection.BlockingChannel,
+    delivery_tag: int,
+) -> None:
+    """подтвердить успешную обработку сообщения"""
+    channel.basic_ack(delivery_tag=delivery_tag)
+
+
+def _reject_message(
+    channel: pika.adapters.blocking_connection.BlockingChannel,
+    delivery_tag: int,
+    *,
+    requeue: bool,
+) -> None:
+    """отклонить сообщение"""
+    channel.basic_nack(delivery_tag=delivery_tag, requeue=requeue)
+
+
+def _handle_message(
+    channel: pika.adapters.blocking_connection.BlockingChannel,
+    method: pika.spec.Basic.Deliver,
+    _properties: pika.BasicProperties,
+    body: bytes,
+) -> None:
+    """обработать одно сообщение из очереди"""
+    worker_id = _get_worker_id()
+    delivery_tag = method.delivery_tag
+
+    try:
+        message = PredictionTaskMessage.from_bytes(body)
+    except Exception as exc:
+        LOGGER.exception(
+            "worker_id=%s | Некорректное сообщение в очереди: %s",
+            worker_id,
+            exc,
+        )
+        _reject_message(channel, delivery_tag, requeue=False)
+        return
+
+    session = SessionLocal()
+
+    try:
+        result = process_document_prediction_task(
+            session,
+            task_id=message.task_id,
+        )
+
+        LOGGER.info(
+            "worker_id=%s | task_id=%s | status=%s | was_processed=%s | message=%s",
+            worker_id,
+            result.task_id,
+            result.status.value,
+            result.was_processed,
+            result.message,
+        )
+        _ack_message(channel, delivery_tag)
+
+    except NotFoundError as exc:
+        LOGGER.error(
+            "worker_id=%s | task_id=%s | Задача не найдена: %s",
+            worker_id,
+            message.task_id,
+            exc,
+        )
+        _reject_message(channel, delivery_tag, requeue=False)
+
+    except Exception as exc:
+        LOGGER.exception(
+            "worker_id=%s | task_id=%s | Ошибка обработки задачи: %s",
+            worker_id,
+            message.task_id,
+            exc,
+        )
+        if session.in_transaction():
+            session.rollback()
+        _reject_message(channel, delivery_tag, requeue=True)
+
+    finally:
+        session.close()
+
+
+def run_prediction_worker() -> None:
+    """запустить worker для обработки задач предсказания"""
+    _configure_logging()
+
+    worker_id = _get_worker_id()
+    reconnect_delay_seconds = _get_reconnect_delay_seconds()
+
+    LOGGER.info(
+        "worker_id=%s | Запуск worker-а обработки задач | queue=%s",
+        worker_id,
+        app_settings.rabbitmq_queue_name,
+    )
+
+    while True:
+        try:
+            with open_rabbitmq_connection() as connection:
+                channel = connection.channel()
+
+                declare_prediction_queue(channel)
+                configure_consumer_qos(channel)
+
+                channel.basic_consume(
+                    queue=app_settings.rabbitmq_queue_name,
+                    on_message_callback=_handle_message,
+                    auto_ack=False,
+                )
+
+                LOGGER.info(
+                    "worker_id=%s | Подключение к RabbitMQ установлено. Ожидание сообщений...",
+                    worker_id,
+                )
+
+                try:
+                    channel.start_consuming()
+                except KeyboardInterrupt:
+                    LOGGER.info(
+                        "worker_id=%s | Получен сигнал остановки. Завершаем worker.",
+                        worker_id,
+                    )
+                    channel.stop_consuming()
+                    break
+                finally:
+                    if channel.is_open:
+                        channel.close()
+
+        except KeyboardInterrupt:
+            LOGGER.info(
+                "worker_id=%s | Worker остановлен пользователем.",
+                worker_id,
+            )
+            break
+        except Exception as exc:
+            LOGGER.exception(
+                "worker_id=%s | Не удалось подключиться к RabbitMQ или соединение было потеряно: %s",
+                worker_id,
+                exc,
+            )
+            LOGGER.info(
+                "worker_id=%s | Повторная попытка подключения через %s сек.",
+                worker_id,
+                reconnect_delay_seconds,
+            )
+            time.sleep(reconnect_delay_seconds)
+
+
+if __name__ == "__main__":
+    run_prediction_worker()
