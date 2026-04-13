@@ -30,8 +30,45 @@ class ValidationIssueResponse(BaseModel):
         )
 
 
+class PredictAcceptedResponse(BaseModel):
+    """
+    ответ API при асинхронной постановке задачи:
+    запрос принят, задача сохранена и отправлена в очередь
+    """
+
+    task_id: UUID
+    model_id: UUID
+    model_name: str
+    status: TaskStatus
+    created_at: datetime
+    message: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        task_id: UUID,
+        model_id: UUID,
+        model_name: str,
+        created_at: datetime,
+        message: str = "Задача принята и поставлена в очередь на обработку.",
+    ) -> "PredictAcceptedResponse":
+        return cls(
+            task_id=task_id,
+            model_id=model_id,
+            model_name=model_name,
+            status=TaskStatus.QUEUED,
+            created_at=created_at,
+            message=message,
+        )
+
+
 class PredictResponse(BaseModel):
-    """ответ успешного выполнения предсказания"""
+    """
+    ответ успешного синхронного выполнения предсказания
+    временная схема, оставлена на переходный этап,
+    пока роут и сервисы не переведены на асинхронный сценарий
+    """
 
     task_id: UUID
     model_id: UUID
