@@ -207,3 +207,27 @@ def low_balance_auth_headers(basic_auth_header_factory) -> dict[str, str]:
         "low.balance.user@example.com",
         "low-balance-password",
     )
+
+
+@pytest.fixture
+def publish_task_spy(monkeypatch):
+    """
+    подменяет реальную публикацию в RabbitMQ на spy-функцию
+    проверяет, что сообщение отправлено
+    """
+    published_messages = []
+
+    def _fake_publish(message, *, queue_name=None) -> None:
+        published_messages.append(
+            {
+                "message": message,
+                "queue_name": queue_name,
+            }
+        )
+
+    monkeypatch.setattr(
+        "technical_document_ml_service.services.prediction_submission_service.publish_prediction_task",
+        _fake_publish,
+    )
+
+    return published_messages

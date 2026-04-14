@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from technical_document_ml_service.db.session import SessionLocal
+from technical_document_ml_service.services.prediction_processing_service import (
+    process_document_prediction_task,
+)
+
 
 def test_transactions_history_returns_created_top_up_transaction(
     client,
@@ -23,11 +28,12 @@ def test_transactions_history_returns_created_top_up_transaction(
     assert str(body["items"][0]["user_id"]) == str(api_user.id)
 
 
-def test_predictions_history_contains_successful_prediction(
+def test_predictions_history_contains_successful_prediction_after_processing(
     client,
     api_user,
     api_model,
     auth_headers,
+    publish_task_spy,
 ) -> None:
     files = [
         ("documents", ("sample.pdf", b"%PDF-1.4 test content", "application/pdf")),
@@ -43,7 +49,15 @@ def test_predictions_history_contains_successful_prediction(
         files=files,
         headers=auth_headers,
     )
-    assert predict_response.status_code == 200
+    assert predict_response.status_code == 202
+
+    task_id = predict_response.json()["task_id"]
+
+    with SessionLocal() as session:
+        process_document_prediction_task(
+            session,
+            task_id=task_id,
+        )
 
     history_response = client.get("/history/predictions", headers=auth_headers)
 
