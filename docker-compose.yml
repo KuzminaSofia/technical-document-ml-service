@@ -5,12 +5,57 @@ services:
     container_name: technical-document-app
     env_file:
       - ./app/.env
+    environment:
+      APP_STORAGE_DIR: /app/storage/uploads
     volumes:
       - ./app/src:/app/src
       - ./app/tests:/app/tests
+      - ./storage/uploads:/app/storage/uploads
     depends_on:
-      - database
-      - rabbitmq
+      database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  worker-1:
+    build:
+      context: ./app
+    container_name: technical-document-worker-1
+    env_file:
+      - ./app/.env
+    environment:
+      APP_STORAGE_DIR: /app/storage/uploads
+      WORKER_ID: worker-1
+    command: ["python", "-m", "technical_document_ml_service.workers.prediction_worker"]
+    restart: on-failure
+    volumes:
+      - ./app/src:/app/src
+      - ./storage/uploads:/app/storage/uploads
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  worker-2:
+    build:
+      context: ./app
+    container_name: technical-document-worker-2
+    env_file:
+      - ./app/.env
+    environment:
+      APP_STORAGE_DIR: /app/storage/uploads
+      WORKER_ID: worker-2
+    command: ["python", "-m", "technical_document_ml_service.workers.prediction_worker"]
+    restart: on-failure
+    volumes:
+      - ./app/src:/app/src
+      - ./storage/uploads:/app/storage/uploads
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   web-proxy:
     build:
@@ -31,6 +76,12 @@ services:
       - "15672:15672"
     volumes:
       - ./storage/rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   database:
     image: postgres:16
@@ -41,6 +92,12 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d technical_document_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
 volumes:
   postgres_data:
