@@ -193,6 +193,108 @@
 
 ---
 
+### Задание №5 — взаимодействие с ML-сервисом через RabbitMQ
+
+В проекте реализован асинхронный сценарий взаимодействия с ML-сервисом через брокер сообщений `RabbitMQ`
+
+#### Реализовано
+
+**1 Асинхронная архитектура publisher -> broker -> consumers**
+Синхронный сценарий обработки из задания №4 был разделен на два независимых use case:
+
+- `submit` — прием запроса, сохранение документов, создание задачи в БД и публикация сообщения в RabbitMQ;
+- `process` — обработка ранее поставленной задачи отдельным воркером
+
+В результате приложение теперь работает по схеме:
+- REST API принимает запрос;
+- формирует ML-задачу;
+- публикует сообщение в очередь;
+- отдельные воркеры забирают сообщения и выполняют обработку
+
+**2 Новый контракт POST /predict**
+Эндпоинт `POST /predict` переведен в асинхронный режим:
+- принимает документы через `multipart/form-data`;
+- создает запись задачи и связи с документами;
+- публикует сообщение в RabbitMQ;
+- возвращает клиенту `202 Accepted` и `task_id`
+
+Для жизненного цикла задачи добавлен новый статус:
+- `queued` — задача принята API и поставлена в очередь на обработку
+
+**3 RabbitMQ и очередь задач**
+Добавлена инфраструктура обмена сообщениями:
+- модуль `messaging/contracts.py` с JSON-контрактом сообщения;
+- модуль `messaging/rabbitmq.py` для публикации и consumer-конфигурации;
+- одна очередь `technical_document_prediction_tasks`;
+- durable-очередь и persistent-сообщения (`delivery_mode=2`)
+
+В сообщение передаются метаданные задачи:
+- `task_id`;
+- `user_id`;
+- `model_name`;
+- `timestamp`
+
+**4 ML-воркеры**
+Реализованы отдельные воркеры, которые:
+- подключаются к RabbitMQ;
+- подписываются на очередь;
+- получают задачи из очереди;
+- валидируют входные данные;
+- выполняют mock-предикт;
+- сохраняют результат обработки в базе данных;
+- сохраняют историю ML-запросов;
+- сохраняют транзакцию списания
+
+В `docker-compose.yml` добавлены два consumer-сервиса:
+- `worker-1`
+- `worker-2`
+
+**5 Mock ML-predict**
+`TechnicalDocumentExtractionModel.predict()`:
+- проверяет валидность задачи;
+- отбирает поддерживаемые документы;
+- формирует mock-результат с полями:
+  - `document_type`;
+  - `target_schema`;
+  - `status = processed`
+
+**6 Устойчивость и корректность обработки**
+Добавлены механизмы надежности:
+- healthcheck для `rabbitmq` и `database`;
+- ожидание готовности сервисов через `depends_on.condition: service_healthy`;
+- retry-подключение воркера к RabbitMQ;
+- `basic_ack` только после успешной обработки;
+- `basic_nack(requeue=False)` для битых сообщений;
+- защита от повторной обработки уже завершенных задач;
+- блокировка `SELECT ... FOR UPDATE` при обработке задачи в воркере
+
+**7 Совместное файловое хранилище**
+тк API сохраняет документы, а воркеры обрабатывают их в отдельных контейнерах, для `app`, `worker-1` и `worker-2` подключен общий volume:
+- `./storage/uploads:/app/storage/uploads`
+
+**8 Ручное тестирование сценария**
+Проведена ручная проверка end-to-end сценария:
+- через Swagger UI отправлена задача на `POST /predict`;
+- задача получила статус `queued`;
+- сообщение появилось в RabbitMQ;
+- один из воркеров обработал задачу;
+- задача перешла в статус `completed`;
+- в истории предсказаний и транзакций появились соответствующие записи
+
+**9 Тестирование**
+Обновлены и добавлены тесты:
+- submit-сценарий `POST /predict` с ответом `202 Accepted`;
+- проверка, что задача сохраняется в статусе `queued`;
+- проверка публикации сообщения через spy вместо реального RabbitMQ;
+- тесты processing-сервиса;
+- тест на идемпотентность повторной обработки завершенной задачи;
+- обновление тестов истории под асинхронный сценарий.
+
+Текущее состояние тестов:
+- `27 passed`
+
+---
+
 ## Текущая структура проекта
 
 ```text
@@ -242,17 +344,26 @@ technical-document-ml-service/
 │   │       │   ├── entities.py
 │   │       │   ├── enums.py
 │   │       │   └── exceptions.py
-│   │       └── services/
+│   │       ├── messaging/
+│   │       │   ├── __init__.py
+│   │       │   ├── contracts.py
+│   │       │   └── rabbitmq.py
+│   │       ├── services/
+│   │       │   ├── __init__.py
+│   │       │   ├── auth_service.py
+│   │       │   ├── billing_service.py
+│   │       │   ├── document_storage_service.py
+│   │       │   ├── dto.py
+│   │       │   ├── history_service.py
+│   │       │   ├── mappers.py
+│   │       │   ├── orm_queries.py
+│   │       │   ├── prediction_processing_service.py
+│   │       │   ├── prediction_service.py
+│   │       │   ├── prediction_submission_service.py
+│   │       │   └── user_service.py
+│   │       └── workers/
 │   │           ├── __init__.py
-│   │           ├── auth_service.py
-│   │           ├── billing_service.py
-│   │           ├── document_storage_service.py
-│   │           ├── dto.py
-│   │           ├── history_service.py
-│   │           ├── mappers.py
-│   │           ├── orm_queries.py
-│   │           ├── prediction_service.py
-│   │           └── user_service.py
+│   │           └── prediction_worker.py
 │   └── tests/
 │       ├── conftest.py
 │       ├── test_api_auth.py
@@ -262,12 +373,14 @@ technical-document-ml-service/
 │       ├── test_billing_service.py
 │       ├── test_history_service.py
 │       ├── test_init_db.py
+│       ├── test_prediction_processing_service.py
 │       └── test_user_service.py
 ├── web-proxy/
 │   ├── Dockerfile
 │   └── nginx.conf
 ├── storage/
-│   └── rabbitmq/
+│   ├── rabbitmq/
+│   └── uploads/
 ├── docker-compose.yml
 ├── pyproject.toml
 ├── README.md
@@ -291,7 +404,15 @@ technical-document-ml-service/
 `docker compose run --rm app pytest -q`
 
 Ожидаемый результат на данном этапе:
-`25 passed`
+`27 passed`
+
+## RabbitMQ UI
+доступен по адресу:
+`http://localhost:15672`
+
+по умолчанию:
+- login: `guest`
+- password: `guest`
 
 ## Swagger UI
 доступен по адресу:
