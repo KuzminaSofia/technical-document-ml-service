@@ -383,6 +383,9 @@ technical-document-ml-service/
 │       ├── test_init_db.py
 │       ├── test_prediction_processing_service.py
 │       └── test_user_service.py
+├── worker/
+│   ├── Dockerfile
+│   └── requirements.txt
 ├── web-proxy/
 │   ├── Dockerfile
 │   └── nginx.conf
