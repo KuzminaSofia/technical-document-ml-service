@@ -19,17 +19,16 @@ services:
 
   worker-1:
     build:
-      context: ./app
+      context: ./worker
     container_name: technical-document-worker-1
     env_file:
       - ./app/.env
     environment:
       APP_STORAGE_DIR: /app/storage/uploads
       WORKER_ID: worker-1
-    command: ["python", "-m", "technical_document_ml_service.workers.prediction_worker"]
     restart: on-failure
     volumes:
-      - ./app/src:/app/src
+      - ./app/src:/app/src:ro
       - ./storage/uploads:/app/storage/uploads
     depends_on:
       database:
@@ -39,17 +38,16 @@ services:
 
   worker-2:
     build:
-      context: ./app
+      context: ./worker
     container_name: technical-document-worker-2
     env_file:
       - ./app/.env
     environment:
       APP_STORAGE_DIR: /app/storage/uploads
       WORKER_ID: worker-2
-    command: ["python", "-m", "technical_document_ml_service.workers.prediction_worker"]
     restart: on-failure
     volumes:
-      - ./app/src:/app/src
+      - ./app/src:/app/src:ro
       - ./storage/uploads:/app/storage/uploads
     depends_on:
       database:
