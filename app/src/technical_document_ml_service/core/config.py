@@ -20,6 +20,7 @@ class AppSettings:
 
     uploads_dir: str
     artifacts_dir: str
+    default_prediction_backend: str
 
     rabbitmq_host: str
     rabbitmq_port: int
@@ -41,6 +42,10 @@ def load_app_settings() -> AppSettings:
     return AppSettings(
         uploads_dir=os.getenv("APP_UPLOADS_DIR", str(default_uploads_dir)),
         artifacts_dir=os.getenv("APP_ARTIFACTS_DIR", str(default_artifacts_dir)),
+        default_prediction_backend=os.getenv(
+            "APP_DEFAULT_PREDICTION_BACKEND",
+            "docling",
+        ),
         rabbitmq_host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
         rabbitmq_port=int(os.getenv("RABBITMQ_PORT", "5672")),
         rabbitmq_user=os.getenv("RABBITMQ_USER", "guest"),
