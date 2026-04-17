@@ -219,8 +219,8 @@ class ValidationIssue(BaseEntity):
 
 class PredictionResult(BaseEntity):
     """результат работы ML-модели
-    содержит извлеченные структурированные данные и список ошибок,
-    найденных в процессе валидации входных данных
+    содержит извлеченные структурированные данные, список ошибок
+    валидации и сведения о сохраненных артефактах обработки
     """
 
     def __init__(
@@ -229,6 +229,8 @@ class PredictionResult(BaseEntity):
         extracted_data: dict[str, Any] | None = None,
         validation_issues: list[ValidationIssue] | None = None,
         output_path: str | None = None,
+        artifacts_dir: str | None = None,
+        artifacts_manifest: list[dict[str, Any]] | None = None,
         entity_id: UUID | None = None,
         created_at: datetime | None = None,
     ) -> None:
@@ -237,6 +239,8 @@ class PredictionResult(BaseEntity):
         self._extracted_data: dict[str, Any] = extracted_data or {}
         self._validation_issues: list[ValidationIssue] = validation_issues or []
         self._output_path: str | None = output_path
+        self._artifacts_dir: str | None = artifacts_dir
+        self._artifacts_manifest: list[dict[str, Any]] = artifacts_manifest or []
         self._created_at: datetime = created_at or datetime.now(UTC)
 
     @property
@@ -258,6 +262,16 @@ class PredictionResult(BaseEntity):
     def output_path(self) -> str | None:
         """вернуть путь к сохраненному результату, если он есть"""
         return self._output_path
+
+    @property
+    def artifacts_dir(self) -> str | None:
+        """вернуть директорию с артефактами обработки, если она есть"""
+        return self._artifacts_dir
+
+    @property
+    def artifacts_manifest(self) -> list[dict[str, Any]]:
+        """вернуть описание сохраненных артефактов обработки"""
+        return self._artifacts_manifest
 
     @property
     def created_at(self) -> datetime:
@@ -461,6 +475,8 @@ class TechnicalDocumentExtractionModel(MLModel):
             task_id=task.id,
             extracted_data=extracted_data,
             validation_issues=[],
+            artifacts_dir=None,
+            artifacts_manifest=[],
         )
 
 

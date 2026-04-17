@@ -64,6 +64,8 @@ class PredictionExecutionResult:
     extracted_data: dict[str, Any]
     validation_issues: list[ValidationIssue]
     output_path: str | None
+    artifacts_dir: str | None
+    artifacts_manifest: list[dict[str, Any]]
 
 
 def _parse_supported_document_types(values: list[str]) -> set[DocumentType]:
@@ -195,6 +197,8 @@ def persist_prediction_result(
         extracted_data=result.extracted_data,
         validation_issues=validation_issues_payload,
         output_file_path=result.output_path,
+        artifacts_dir=result.artifacts_dir,
+        artifacts_manifest=result.artifacts_manifest,
         created_at=result.created_at,
     )
     session.add(result_orm)
@@ -303,6 +307,8 @@ def execute_document_prediction(
             extracted_data=result.extracted_data,
             validation_issues=result.validation_issues,
             output_path=result.output_path,
+            artifacts_dir=result.artifacts_dir,
+            artifacts_manifest=result.artifacts_manifest,
         )
 
     except Exception:

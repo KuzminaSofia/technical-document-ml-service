@@ -129,6 +129,18 @@ class MLModelORM(Base):
         default=list,
         server_default=text("'[]'::jsonb"),
     )
+    backend_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        default="docling",
+        server_default=text("'docling'"),
+    )
+    backend_config: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
 
     tasks: Mapped[list["MLTaskORM"]] = relationship(back_populates="model")
     request_history: Mapped[list["MLRequestHistoryORM"]] = relationship(
@@ -297,6 +309,13 @@ class PredictionResultORM(Base):
         server_default=text("'[]'::jsonb"),
     )
     output_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    artifacts_dir: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    artifacts_manifest: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=text("'[]'::jsonb"),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
