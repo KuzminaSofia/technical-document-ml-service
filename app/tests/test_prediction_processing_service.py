@@ -75,9 +75,9 @@ def test_process_document_prediction_task_completes_and_persists_result(
         assert user is not None
         assert user.balance_credits == Decimal("90.00")
 
-        prediction_results_count = session.scalar(
-            select(func.count()).select_from(PredictionResultORM)
-        )
+        prediction_results = session.scalars(
+            select(PredictionResultORM)
+        ).all()
         transactions_count = session.scalar(
             select(func.count()).select_from(TransactionORM)
         )
@@ -85,7 +85,12 @@ def test_process_document_prediction_task_completes_and_persists_result(
             select(func.count()).select_from(MLRequestHistoryORM)
         )
 
-        assert prediction_results_count == 1
+        assert len(prediction_results) == 1
+        prediction_result = prediction_results[0]
+        assert prediction_result.output_file_path is not None
+        assert prediction_result.artifacts_dir is not None
+        assert len(prediction_result.artifacts_manifest) >= 1
+
         assert transactions_count == 1
         assert history_count == 1
 
