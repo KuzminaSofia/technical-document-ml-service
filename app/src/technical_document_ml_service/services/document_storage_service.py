@@ -40,7 +40,7 @@ def save_documents(
     documents: list[IncomingDocumentData],
 ) -> list[StoredDocumentData]:
     """сохранить документы пользователя в локальное файловое хранилище"""
-    base_dir = Path(app_settings.storage_dir) / str(owner_id)
+    base_dir = Path(app_settings.uploads_dir) / str(owner_id)
     base_dir.mkdir(parents=True, exist_ok=True)
 
     stored_documents: list[StoredDocumentData] = []

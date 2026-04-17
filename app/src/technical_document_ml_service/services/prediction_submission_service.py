@@ -16,10 +16,7 @@ from technical_document_ml_service.services.document_storage_service import (
     delete_stored_files,
     save_documents,
 )
-from technical_document_ml_service.services.mappers import (
-    orm_to_domain_user,
-    sync_task_orm_from_domain,
-)
+from technical_document_ml_service.services.mappers import sync_task_orm_from_domain
 from technical_document_ml_service.services.orm_queries import (
     get_model_orm_by_name_or_raise,
     get_user_orm_or_raise,
@@ -31,6 +28,7 @@ from technical_document_ml_service.services.prediction_service import (
     persist_task,
     persist_uploaded_documents,
 )
+from technical_document_ml_service.services.mappers import orm_to_domain_user
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,16 +52,19 @@ def submit_document_prediction(
 ) -> PredictionSubmissionResult:
     """
     поставить задачу обработки документов в очередь
+
+    Сценарий:
     1. загрузить пользователя и модель;
     2. выполнить ранние проверки;
     3. сохранить документы в storage;
-    4. создать задачу и записать ее в БД;
-    5. опубликовать сообщение в RabbitMQ;
-    6. перевести задачу в статус queued
+    4. создать задачу;
+    5. сразу перевести ее в статус queued;
+    6. сохранить задачу и документы в БД;
+    7. зафиксировать транзакцию коммитом;
+    8. опубликовать сообщение в RabbitMQ
     """
     saved_paths: list[str] = []
     task: DocumentExtractionTask | None = None
-    task_orm: MLTaskORM | None = None
     task_persisted = False
 
     try:
@@ -95,12 +96,13 @@ def submit_document_prediction(
             documents=domain_documents,
             target_schema=target_schema,
         )
+        task.mark_as_queued()
 
         document_orms = persist_uploaded_documents(
             session,
             documents=domain_documents,
         )
-        task_orm = persist_task(
+        persist_task(
             session,
             task=task,
             document_orms=document_orms,
@@ -116,10 +118,6 @@ def submit_document_prediction(
             timestamp=datetime.now(UTC),
         )
         publish_prediction_task(message)
-
-        task.mark_as_queued()
-        sync_task_orm_from_domain(task_orm, task)
-        session.commit()
 
         return PredictionSubmissionResult(
             task_id=task.id,

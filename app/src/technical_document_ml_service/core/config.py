@@ -18,7 +18,8 @@ def _get_bool_env(name: str, default: bool) -> bool:
 class AppSettings:
     """основные настройки приложения"""
 
-    storage_dir: str
+    uploads_dir: str
+    artifacts_dir: str
 
     rabbitmq_host: str
     rabbitmq_port: int
@@ -34,10 +35,12 @@ class AppSettings:
 
 def load_app_settings() -> AppSettings:
     """загрузить настройки приложения из переменных окружения"""
-    default_storage_dir = Path("storage/uploads")
+    default_uploads_dir = Path("storage/uploads")
+    default_artifacts_dir = Path("storage/artifacts")
 
     return AppSettings(
-        storage_dir=os.getenv("APP_STORAGE_DIR", str(default_storage_dir)),
+        uploads_dir=os.getenv("APP_UPLOADS_DIR", str(default_uploads_dir)),
+        artifacts_dir=os.getenv("APP_ARTIFACTS_DIR", str(default_artifacts_dir)),
         rabbitmq_host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
         rabbitmq_port=int(os.getenv("RABBITMQ_PORT", "5672")),
         rabbitmq_user=os.getenv("RABBITMQ_USER", "guest"),

@@ -6,11 +6,13 @@ services:
     env_file:
       - ./app/.env
     environment:
-      APP_STORAGE_DIR: /app/storage/uploads
+      APP_UPLOADS_DIR: /app/storage/uploads
+      APP_ARTIFACTS_DIR: /app/storage/artifacts
     volumes:
       - ./app/src:/app/src
       - ./app/tests:/app/tests
       - ./storage/uploads:/app/storage/uploads
+      - ./storage/artifacts:/app/storage/artifacts
     depends_on:
       database:
         condition: service_healthy
@@ -24,12 +26,14 @@ services:
     env_file:
       - ./app/.env
     environment:
-      APP_STORAGE_DIR: /app/storage/uploads
+      APP_UPLOADS_DIR: /app/storage/uploads
+      APP_ARTIFACTS_DIR: /app/storage/artifacts
       WORKER_ID: worker-1
     restart: on-failure
     volumes:
       - ./app/src:/app/src:ro
       - ./storage/uploads:/app/storage/uploads
+      - ./storage/artifacts:/app/storage/artifacts
     depends_on:
       database:
         condition: service_healthy
@@ -43,12 +47,14 @@ services:
     env_file:
       - ./app/.env
     environment:
-      APP_STORAGE_DIR: /app/storage/uploads
+      APP_UPLOADS_DIR: /app/storage/uploads
+      APP_ARTIFACTS_DIR: /app/storage/artifacts
       WORKER_ID: worker-2
     restart: on-failure
     volumes:
       - ./app/src:/app/src:ro
       - ./storage/uploads:/app/storage/uploads
+      - ./storage/artifacts:/app/storage/artifacts
     depends_on:
       database:
         condition: service_healthy

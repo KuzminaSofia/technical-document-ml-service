@@ -45,11 +45,11 @@ def clean_database() -> None:
 @pytest.fixture(autouse=True)
 def isolated_storage_dir(tmp_path) -> None:
     """
-    подменяет директорию хранения загружаемых файлов на временную
+    подменяет директории хранения файлов на временные
     для каждого теста
     """
-    object.__setattr__(app_settings, "storage_dir", str(tmp_path / "uploads"))
-
+    object.__setattr__(app_settings, "uploads_dir", str(tmp_path / "uploads"))
+    object.__setattr__(app_settings, "artifacts_dir", str(tmp_path / "artifacts"))
 
 @pytest.fixture
 def client():
