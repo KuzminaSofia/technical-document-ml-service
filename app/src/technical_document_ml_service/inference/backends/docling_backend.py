@@ -83,14 +83,14 @@ class DoclingBackend(PredictionBackend):
                 if not self._is_stub_fallback_allowed():
                     raise BackendExecutionError(
                         "Пакет 'docling' недоступен в текущем окружении. "
-                        "Stub fallback отключён."
+                        "Stub fallback отключен."
                     ) from exc
 
                 converter = None
                 mode = "stub_fallback"
                 warning_message = (
                     "Пакет docling недоступен в текущем окружении. "
-                    "Использован разрешённый stub fallback."
+                    "Использован разрешенный stub fallback."
                 )
                 warnings.append(warning_message)
                 LOGGER.warning(
@@ -162,6 +162,8 @@ class DoclingBackend(PredictionBackend):
                     }
                     _save_json(summary_path, document_summary)
 
+                except BackendExecutionError:
+                    raise
                 except Exception as exc:
                     raise BackendExecutionError(
                         f"Ошибка Docling при обработке файла '{document.original_filename}': {exc}"

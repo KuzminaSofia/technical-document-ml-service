@@ -154,6 +154,28 @@ def low_balance_user(session_factory) -> UserORM:
 
     with session_factory() as session:
         return session.get(UserORM, user_id)
+    
+
+@pytest.fixture
+def another_api_user(session_factory) -> UserORM:
+    """
+    второй пользователь для API-тестов с достаточным балансом
+    """
+    with session_factory.begin() as session:
+        user = UserORM(
+            id=uuid4(),
+            email="another.api.user@example.com",
+            password_hash=hash_password("another-test-password"),
+            role=UserRole.USER.value,
+            balance_credits=Decimal("100.00"),
+            is_active=True,
+        )
+        session.add(user)
+        session.flush()
+        user_id = user.id
+
+    with session_factory() as session:
+        return session.get(UserORM, user_id)
 
 
 @pytest.fixture
@@ -200,6 +222,17 @@ def auth_headers(basic_auth_header_factory) -> dict[str, str]:
     Basic Auth заголовок для api_user
     """
     return basic_auth_header_factory("api.user@example.com", "test-password")
+
+
+@pytest.fixture
+def another_auth_headers(basic_auth_header_factory) -> dict[str, str]:
+    """
+    Basic Auth заголовок для another_api_user
+    """
+    return basic_auth_header_factory(
+        "another.api.user@example.com",
+        "another-test-password",
+    )
 
 
 @pytest.fixture

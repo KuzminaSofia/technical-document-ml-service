@@ -115,7 +115,7 @@ def persist_task(
     task: DocumentExtractionTask,
     document_orms: list[UploadedDocumentORM],
 ) -> MLTaskORM:
-    """сохранить ML-задачу и её связь с документами"""
+    """сохранить ML-задачу и ее связь с документами"""
     task_orm = MLTaskORM(
         id=task.id,
         user_id=task.user_id,
