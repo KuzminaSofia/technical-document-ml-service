@@ -254,16 +254,28 @@ worker вынесен в отдельный сервисный слой:
 - общий прикладной код подключается в worker-контейнер через volume:
   - `./app/src:/app/src:ro`
 
-**5 Mock ML-predict**
-`TechnicalDocumentExtractionModel.predict()`:
-- проверяет валидность задачи;
-- отбирает поддерживаемые документы;
-- формирует mock-результат с полями:
-  - `document_type`;
-  - `target_schema`;
-  - `status = processed`
+**5 ML-predict через Docling**
+Вместо mock-предикта подключен inference backend:
+- добавлен слой `inference/` с поддержкой backend обработки
+- реализован `DoclingBackend`
+- подготовлена архитектура для дальнейшего подлюкчения других backend обработчиков
 
-**6 Устойчивость и корректность обработки**
+Worker теперь обрабатывает PDF-документы через `Docling` и сохраняет артефакты обработки:
+- `*.docling.json`;
+- `*.docling.md`;
+- `*.docling.txt`;
+- `*.summary.json`;
+- `task.summary.json`
+
+Артефакты сохраняются в директорию: 
+- `storage/artifacts/<task_id>/...`
+
+**6 новый read API для задач и результатов**
+- `GET /tasks` - список задач пользователя + фильтрация по статусу;
+- `GET /tasks/{task_id}` - детальная информация по задаче;
+- `GET /tasks/{task_id}/result` - задача, результат обработки и список артефактов;
+
+**7 Устойчивость и корректность обработки**
 Добавлены механизмы надежности:
 - healthcheck для `rabbitmq` и `database`;
 - ожидание готовности сервисов через `depends_on.condition: service_healthy`;
@@ -273,33 +285,39 @@ worker вынесен в отдельный сервисный слой:
 - защита от повторной обработки уже завершенных задач;
 - блокировка `SELECT ... FOR UPDATE` при обработке задачи в воркере
 
-**7. Разделение сервисов и общие volume**  
+**8 Разделение сервисов и общие volume**  
 API и worker работают в отдельных контейнерах:
 - общий прикладной код подключается в worker через volume:
   - `./app/src:/app/src:ro`;
-- общее файловое хранилище документов подключается для `app`, `worker-1` и `worker-2` через volume:
-  - `./storage/uploads:/app/storage/uploads`.
+- входные документы доступны для `app`, `worker-1` и `worker-2` через volume:
+  - `./storage/uploads:/app/storage/uploads`
+- артефакты обработки доступны через volume:
+  - `./storage/artifacts:/app/storage/artifacts`
 
-**8 Ручное тестирование сценария**
+**9 Ручное тестирование сценария**
 Проведена ручная проверка end-to-end сценария:
 - через Swagger UI отправлена задача на `POST /predict`;
-- задача получила статус `queued`;
+- задача получила `task_id` и статус `queued`;
 - сообщение появилось в RabbitMQ;
-- один из воркеров обработал задачу;
+- один из воркеров обработал задачу через `Docling`;
 - задача перешла в статус `completed`;
+- в файловом хранилище появились артефакты обработки;
+- результат стал доступен через `GET /tasks/{task_id}` и `GET /tasks/{task_id}/result`
 - в истории предсказаний и транзакций появились соответствующие записи
 
-**9 Тестирование**
+**10 Тестирование**
 Обновлены и добавлены тесты:
 - submit-сценарий `POST /predict` с ответом `202 Accepted`;
 - проверка, что задача сохраняется в статусе `queued`;
 - проверка публикации сообщения через spy вместо реального RabbitMQ;
 - тесты processing-сервиса;
 - тест на идемпотентность повторной обработки завершенной задачи;
-- обновление тестов истории под асинхронный сценарий.
+- тесты inference- слоя;
+- тесты `DoclingBackend`;
+- тесты read API;
 
 Текущее состояние тестов:
-- `27 passed`
+- `38 passed`
 
 ---
 
@@ -327,6 +345,7 @@ technical-document-ml-service/
 │   │       │   │   ├── health.py
 │   │       │   │   ├── history.py
 │   │       │   │   ├── predict.py
+│   │       │   │   ├── tasks.py
 │   │       │   │   └── users.py
 │   │       │   └── schemas/
 │   │       │       ├── __init__.py
@@ -335,6 +354,7 @@ technical-document-ml-service/
 │   │       │       ├── common.py
 │   │       │       ├── history.py
 │   │       │       ├── predict.py
+│   │       │       ├── tasks.py
 │   │       │       └── users.py
 │   │       ├── core/
 │   │       │   ├── __init__.py
@@ -352,6 +372,17 @@ technical-document-ml-service/
 │   │       │   ├── entities.py
 │   │       │   ├── enums.py
 │   │       │   └── exceptions.py
+│   │       ├── inference/
+│   │       │   ├── __init__.py
+│   │       │   ├── contracts.py
+│   │       │   ├── exceptions.py
+│   │       │   ├── registry.py
+│   │       │   ├── selector.py
+│   │       │   └── backends/
+│   │       │       ├── __init__.py
+│   │       │       ├── base.py
+│   │       │       ├── docling_backend.py
+│   │       │       └── marker_backend.py
 │   │       ├── messaging/
 │   │       │   ├── __init__.py
 │   │       │   ├── contracts.py
@@ -363,11 +394,13 @@ technical-document-ml-service/
 │   │       │   ├── document_storage_service.py
 │   │       │   ├── dto.py
 │   │       │   ├── history_service.py
+│   │       │   ├── inference_mappers.py
 │   │       │   ├── mappers.py
 │   │       │   ├── orm_queries.py
 │   │       │   ├── prediction_processing_service.py
 │   │       │   ├── prediction_service.py
 │   │       │   ├── prediction_submission_service.py
+│   │       │   ├── task_query_service.py
 │   │       │   └── user_service.py
 │   │       └── workers/
 │   │           ├── __init__.py
@@ -378,8 +411,11 @@ technical-document-ml-service/
 │       ├── test_api_balance.py
 │       ├── test_api_history.py
 │       ├── test_api_predict.py
+│       ├── test_api_tasks.py
 │       ├── test_billing_service.py
+│       ├── test_docling_backend.py
 │       ├── test_history_service.py
+│       ├── test_inference_registry.py
 │       ├── test_init_db.py
 │       ├── test_prediction_processing_service.py
 │       └── test_user_service.py
@@ -390,6 +426,7 @@ technical-document-ml-service/
 │   ├── Dockerfile
 │   └── nginx.conf
 ├── storage/
+│   ├── artifacts/
 │   ├── rabbitmq/
 │   └── uploads/
 ├── docker-compose.yml
@@ -415,7 +452,7 @@ technical-document-ml-service/
 `docker compose run --rm app pytest -q`
 
 Ожидаемый результат на данном этапе:
-`27 passed`
+`38 passed`
 
 ## RabbitMQ UI
 доступен по адресу:
