@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from technical_document_ml_service.core.config import app_settings
-from technical_document_ml_service.db.models import MLModelORM
 from technical_document_ml_service.domain.entities import (
     DocumentExtractionTask,
     PredictionResult,
@@ -32,7 +32,11 @@ def _build_backend_document(document) -> BackendDocument:
 def build_backend_request(
     *,
     task: DocumentExtractionTask,
-    model_orm: MLModelORM,
+    model_id: UUID,
+    model_name: str,
+    model_kind: str,
+    backend_name: str,
+    backend_config: dict[str, Any],
 ) -> BackendRequest:
     """собрать унифицированный backend request для обработки задачи"""
     valid_documents = task.get_valid_documents()
@@ -41,11 +45,11 @@ def build_backend_request(
     return BackendRequest(
         task_id=task.id,
         user_id=task.user_id,
-        model_id=model_orm.id,
-        model_name=model_orm.name,
-        model_kind=model_orm.model_kind,
-        backend_name=model_orm.backend_name,
-        backend_config=dict(model_orm.backend_config or {}),
+        model_id=model_id,
+        model_name=model_name,
+        model_kind=model_kind,
+        backend_name=backend_name,
+        backend_config=dict(backend_config or {}),
         target_schema=task.target_schema,
         documents=[_build_backend_document(document) for document in valid_documents],
         artifacts_dir=artifacts_dir,

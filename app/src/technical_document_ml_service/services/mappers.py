@@ -4,10 +4,21 @@ from technical_document_ml_service.db.models import (
     MLRequestHistoryORM,
     MLTaskORM,
     TransactionORM,
+    UploadedDocumentORM,
     UserORM,
 )
-from technical_document_ml_service.domain.entities import MLRequestHistoryRecord, MLTask, User
-from technical_document_ml_service.domain.enums import TaskStatus, TransactionType, UserRole
+from technical_document_ml_service.domain.entities import (
+    MLRequestHistoryRecord,
+    MLTask,
+    UploadedDocument,
+    User,
+)
+from technical_document_ml_service.domain.enums import (
+    DocumentType,
+    TaskStatus,
+    TransactionType,
+    UserRole,
+)
 from technical_document_ml_service.services.dto import (
     PredictionHistoryItem,
     TransactionHistoryItem,
@@ -26,6 +37,28 @@ def orm_to_domain_user(user_orm: UserORM) -> User:
         is_active=user_orm.is_active,
         entity_id=user_orm.id,
         created_at=user_orm.created_at,
+    )
+
+
+def _parse_document_type(raw_value: str) -> DocumentType:
+    """безопасно преобразовать строковый тип документа в enum"""
+    try:
+        return DocumentType(raw_value)
+    except ValueError:
+        return DocumentType.UNKNOWN
+
+
+def document_orm_to_domain(document_orm: UploadedDocumentORM) -> UploadedDocument:
+    """преобразовать ORM-документ в доменную сущность"""
+    return UploadedDocument(
+        owner_id=document_orm.owner_id,
+        original_filename=document_orm.filename,
+        storage_path=document_orm.storage_path,
+        mime_type=document_orm.mime_type,
+        document_type=_parse_document_type(document_orm.document_type),
+        size_bytes=document_orm.file_size,
+        entity_id=document_orm.id,
+        uploaded_at=document_orm.uploaded_at,
     )
 
 

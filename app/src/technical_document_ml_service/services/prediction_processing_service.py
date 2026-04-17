@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -8,29 +9,29 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from technical_document_ml_service.db.models import MLTaskORM, UploadedDocumentORM
+from technical_document_ml_service.db.models import MLTaskORM
 from technical_document_ml_service.domain.entities import (
     DebitTransaction,
     DocumentExtractionTask,
-    UploadedDocument,
 )
-from technical_document_ml_service.domain.enums import DocumentType, TaskStatus
+from technical_document_ml_service.domain.enums import TaskStatus
 from technical_document_ml_service.domain.exceptions import (
     InsufficientBalanceError,
     ModelUnavailableError,
     NotFoundError,
     TaskExecutionError,
 )
-from technical_document_ml_service.inference.mappers import (
-    build_backend_request,
-    build_prediction_result_from_backend_result,
-)
 from technical_document_ml_service.inference.selector import select_prediction_backend
 from technical_document_ml_service.services.billing_service import record_transaction
 from technical_document_ml_service.services.history_service import (
     create_history_record_from_task,
 )
+from technical_document_ml_service.services.inference_mappers import (
+    build_backend_request,
+    build_prediction_result_from_backend_result,
+)
 from technical_document_ml_service.services.mappers import (
+    document_orm_to_domain,
     orm_to_domain_user,
     sync_task_orm_from_domain,
     sync_user_orm_from_domain,
@@ -39,6 +40,9 @@ from technical_document_ml_service.services.prediction_service import (
     model_orm_to_domain,
     persist_prediction_result,
 )
+
+
+LOGGER = logging.getLogger("technical_document_ml_service.prediction_processing")
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,28 +59,6 @@ class PredictionProcessingResult:
     message: str
 
 
-def _parse_document_type(raw_value: str) -> DocumentType:
-    """безопасно преобразовать строковый тип документа в enum"""
-    try:
-        return DocumentType(raw_value)
-    except ValueError:
-        return DocumentType.UNKNOWN
-
-
-def _document_orm_to_domain(document_orm: UploadedDocumentORM) -> UploadedDocument:
-    """преобразовать ORM-документ в доменную сущность"""
-    return UploadedDocument(
-        owner_id=document_orm.owner_id,
-        original_filename=document_orm.filename,
-        storage_path=document_orm.storage_path,
-        mime_type=document_orm.mime_type,
-        document_type=_parse_document_type(document_orm.document_type),
-        size_bytes=document_orm.file_size,
-        entity_id=document_orm.id,
-        uploaded_at=document_orm.uploaded_at,
-    )
-
-
 def _task_orm_to_domain(task_orm: MLTaskORM) -> DocumentExtractionTask:
     """преобразовать ORM-задачу в доменную задачу извлечения документов"""
     result_id = None
@@ -86,7 +68,7 @@ def _task_orm_to_domain(task_orm: MLTaskORM) -> DocumentExtractionTask:
     return DocumentExtractionTask(
         user_id=task_orm.user_id,
         model_id=task_orm.model_id,
-        documents=[_document_orm_to_domain(document) for document in task_orm.documents],
+        documents=[document_orm_to_domain(document) for document in task_orm.documents],
         target_schema=task_orm.target_schema or "",
         entity_id=task_orm.id,
         status=TaskStatus(task_orm.status),
@@ -249,7 +231,11 @@ def process_document_prediction_task(
 
         backend_request = build_backend_request(
             task=domain_task,
-            model_orm=task_orm.model,
+            model_id=task_orm.model.id,
+            model_name=task_orm.model.name,
+            model_kind=task_orm.model.model_kind,
+            backend_name=task_orm.model.backend_name,
+            backend_config=task_orm.model.backend_config,
         )
 
         backend_selection = select_prediction_backend(
@@ -260,6 +246,14 @@ def process_document_prediction_task(
         domain_task.mark_as_processing()
 
         backend_result = backend_selection.backend.process(backend_request)
+
+        for warning in backend_result.warnings:
+            LOGGER.warning(
+                "task_id=%s | backend=%s | warning=%s",
+                domain_task.id,
+                backend_selection.resolved_backend_name,
+                warning,
+            )
 
         result = build_prediction_result_from_backend_result(
             task_id=domain_task.id,

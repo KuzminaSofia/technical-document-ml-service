@@ -71,7 +71,6 @@ class BackendResult:
     extracted_data: dict[str, Any] = field(default_factory=dict)
     output_path: str | None = None
     artifacts: list[BackendArtifact] = field(default_factory=list)
-    raw_payload: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 

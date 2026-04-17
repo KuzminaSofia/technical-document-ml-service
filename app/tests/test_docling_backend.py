@@ -26,7 +26,7 @@ def test_docling_backend_generates_stub_artifacts_when_docling_unavailable(
         _raise_module_not_found,
     )
 
-    backend = DoclingBackend()
+    backend = DoclingBackend(config={"allow_stub_fallback": True})
 
     request = BackendRequest(
         task_id=uuid4(),

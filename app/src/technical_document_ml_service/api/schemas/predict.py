@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -9,9 +8,6 @@ from pydantic import BaseModel
 
 from technical_document_ml_service.domain.entities import ValidationIssue
 from technical_document_ml_service.domain.enums import TaskStatus
-from technical_document_ml_service.services.prediction_service import (
-    PredictionExecutionResult,
-)
 
 
 class ValidationIssueResponse(BaseModel):

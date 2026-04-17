@@ -13,7 +13,6 @@ from .exceptions import (
     DomainError,
     InsufficientBalanceError,
     InvalidAmountError,
-    ModelUnavailableError,
     TaskExecutionError,
 )
 
@@ -370,8 +369,8 @@ class DebitTransaction(Transaction):
         user._decrease_balance(self.amount)
 
 
-class MLModel(BaseEntity, ABC):
-    """абстрактная ML-модель, доступная в сервисе"""
+class MLModel(BaseEntity):
+    """абстракция ML-модели, доступной в сервисе"""
 
     def __init__(
         self,
@@ -415,17 +414,9 @@ class MLModel(BaseEntity, ABC):
         """деактивировать модель"""
         self._is_active = False
 
-    @abstractmethod
-    def predict(self, task: "MLTask") -> PredictionResult:
-        """выполнить предсказание для переданной задачи"""
-        raise NotImplementedError
-
 
 class TechnicalDocumentExtractionModel(MLModel):
-    """конкретная ML-модель для извлечения данных из технической документации
-    на текущем этапе это доменная абстракция
-    реальная логика OCR и извлечения будет добавлена позже
-    """
+    """доменная абстракция модели извлечения данных из технической документации"""
 
     def __init__(
         self,
@@ -449,35 +440,6 @@ class TechnicalDocumentExtractionModel(MLModel):
     def supported_document_types(self) -> set[DocumentType]:
         """вернуть поддерживаемые типы документов"""
         return self._supported_document_types
-
-    def predict(self, task: "MLTask") -> PredictionResult:
-        """выполнить обработку переданной задачи"""
-        if not self.is_active:
-            raise ModelUnavailableError("Выбранная ML-модель недоступна.")
-
-        if not isinstance(task, DocumentExtractionTask):
-            raise TaskExecutionError("Передан неподдерживаемый тип задачи.")
-
-        valid_documents = task.get_valid_documents()
-        if not valid_documents:
-            raise TaskExecutionError("Нет валидных документов для обработки.")
-
-        extracted_data = {
-            doc.original_filename: {
-                "document_type": doc.document_type.value,
-                "target_schema": task.target_schema,
-                "status": "processed",
-            }
-            for doc in valid_documents
-        }
-
-        return PredictionResult(
-            task_id=task.id,
-            extracted_data=extracted_data,
-            validation_issues=[],
-            artifacts_dir=None,
-            artifacts_manifest=[],
-        )
 
 
 class MLTask(BaseEntity, ABC):
@@ -605,48 +567,6 @@ class MLTask(BaseEntity, ABC):
         self._result_id = result_id
         self._error_message = None
         self._finished_at = datetime.now(UTC)
-
-    def run(self, user: User, model: MLModel) -> tuple[PredictionResult, DebitTransaction]:
-        """выполнить задачу"""
-        if user.id != self.user_id:
-            raise TaskExecutionError("Задача не принадлежит переданному пользователю.")
-
-        if model.id != self.model_id:
-            raise TaskExecutionError("Задача не соответствует переданной модели.")
-
-        if not model.is_active:
-            raise ModelUnavailableError("Выбранная ML-модель недоступна.")
-
-        if not user.can_afford(model.prediction_cost):
-            raise InsufficientBalanceError("Недостаточно средств для выполнения задачи.")
-
-        self._status = TaskStatus.VALIDATING
-        validation_issues = self.validate_input()
-
-        self._status = TaskStatus.PROCESSING
-        self._started_at = datetime.now(UTC)
-
-        try:
-            result = model.predict(self)
-            result.add_issues(validation_issues)
-
-            debit_transaction = DebitTransaction(
-                user_id=user.id,
-                amount=model.prediction_cost,
-                task_id=self.id,
-            )
-            debit_transaction.apply(user)
-
-            self._status = TaskStatus.COMPLETED
-            self._spent_credits = model.prediction_cost
-            self._result_id = result.id
-            self._finished_at = datetime.now(UTC)
-
-            return result, debit_transaction
-
-        except DomainError as exc:
-            self.fail(str(exc))
-            raise
 
     def fail(self, error_message: str) -> None:
         """перевести задачу в статус ошибки"""

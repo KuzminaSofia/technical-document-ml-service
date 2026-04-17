@@ -100,6 +100,8 @@ def persisted_model(session_factory) -> MLModelORM:
             is_active=True,
             model_kind="technical_document_extraction",
             supported_document_types=["unknown"],
+            backend_name="docling",
+            backend_config={"allow_stub_fallback": True},
         )
         session.add(model)
         session.flush()
@@ -168,6 +170,8 @@ def api_model(session_factory) -> MLModelORM:
             is_active=True,
             model_kind="technical_document_extraction",
             supported_document_types=["unknown"],
+            backend_name="docling",
+            backend_config={"allow_stub_fallback": True},
         )
         session.add(model)
         session.flush()

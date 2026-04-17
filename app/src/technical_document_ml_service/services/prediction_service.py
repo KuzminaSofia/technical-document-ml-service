@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 from decimal import Decimal
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -19,53 +16,16 @@ from technical_document_ml_service.domain.entities import (
     PredictionResult,
     TechnicalDocumentExtractionModel,
     UploadedDocument,
-    User,
-    ValidationIssue,
 )
-from technical_document_ml_service.domain.enums import DocumentType, TaskStatus
+from technical_document_ml_service.domain.enums import DocumentType
 from technical_document_ml_service.domain.exceptions import (
     InsufficientBalanceError,
     ModelUnavailableError,
     TaskExecutionError,
 )
-from technical_document_ml_service.services.billing_service import record_transaction
 from technical_document_ml_service.services.document_storage_service import (
-    IncomingDocumentData,
     StoredDocumentData,
-    delete_stored_files,
-    save_documents,
 )
-from technical_document_ml_service.services.history_service import (
-    create_history_record_from_task,
-)
-from technical_document_ml_service.services.mappers import (
-    orm_to_domain_user,
-    sync_user_orm_from_domain,
-)
-from technical_document_ml_service.services.orm_queries import (
-    get_model_orm_by_name_or_raise,
-    get_user_orm_or_raise,
-)
-
-
-@dataclass(frozen=True, slots=True)
-class PredictionExecutionResult:
-    """результат выполнения запроса на предсказание"""
-
-    task_id: UUID
-    model_id: UUID
-    model_name: str
-    status: TaskStatus
-    spent_credits: Decimal
-    remaining_balance_credits: Decimal
-    result_id: UUID | None
-    created_at: datetime
-    completed_at: datetime | None
-    extracted_data: dict[str, Any]
-    validation_issues: list[ValidationIssue]
-    output_path: str | None
-    artifacts_dir: str | None
-    artifacts_manifest: list[dict[str, Any]]
 
 
 def _parse_supported_document_types(values: list[str]) -> set[DocumentType]:
@@ -209,7 +169,7 @@ def persist_prediction_result(
 
 def ensure_prediction_can_start(
     *,
-    user: User,
+    user,
     model: TechnicalDocumentExtractionModel,
 ) -> None:
     """
@@ -220,98 +180,3 @@ def ensure_prediction_can_start(
 
     if not user.can_afford(model.prediction_cost):
         raise InsufficientBalanceError("Недостаточно средств для выполнения задачи.")
-
-
-def execute_document_prediction(
-    session: Session,
-    *,
-    user_id: UUID,
-    model_name: str,
-    target_schema: str,
-    documents: list[IncomingDocumentData],
-) -> PredictionExecutionResult:
-    """
-    выполнить полный пользовательский сценарий предсказания:
-    - выбрать модель;
-    - сохранить документы;
-    - создать доменную задачу;
-    - выполнить задачу;
-    - сохранить задачу, результат, транзакцию и историю
-    """
-    saved_paths: list[str] = []
-
-    try:
-        user_orm = get_user_orm_or_raise(session, user_id)
-        model_orm = get_model_orm_by_name_or_raise(session, model_name)
-
-        domain_user = orm_to_domain_user(user_orm)
-        domain_model = model_orm_to_domain(model_orm)
-
-        ensure_prediction_can_start(
-            user=domain_user,
-            model=domain_model,
-        )
-
-        stored_documents = save_documents(
-            owner_id=user_id,
-            documents=documents,
-        )
-        saved_paths = [document.storage_path for document in stored_documents]
-
-        domain_documents = build_domain_documents(
-            owner_id=user_id,
-            stored_documents=stored_documents,
-        )
-
-        task = DocumentExtractionTask(
-            user_id=user_id,
-            model_id=domain_model.id,
-            documents=domain_documents,
-            target_schema=target_schema,
-        )
-
-        result, debit_transaction = task.run(domain_user, domain_model)
-
-        sync_user_orm_from_domain(user_orm, domain_user)
-
-        document_orms = persist_uploaded_documents(
-            session,
-            documents=domain_documents,
-        )
-        persist_task(
-            session,
-            task=task,
-            document_orms=document_orms,
-        )
-        persist_prediction_result(
-            session,
-            task_id=task.id,
-            result=result,
-        )
-        record_transaction(
-            session,
-            transaction=debit_transaction,
-        )
-        create_history_record_from_task(session, task)
-
-        return PredictionExecutionResult(
-            task_id=task.id,
-            model_id=domain_model.id,
-            model_name=domain_model.name,
-            status=task.status,
-            spent_credits=task.spent_credits,
-            remaining_balance_credits=domain_user.balance_credits,
-            result_id=task.result_id,
-            created_at=task.created_at,
-            completed_at=task.finished_at,
-            extracted_data=result.extracted_data,
-            validation_issues=result.validation_issues,
-            output_path=result.output_path,
-            artifacts_dir=result.artifacts_dir,
-            artifacts_manifest=result.artifacts_manifest,
-        )
-
-    except Exception:
-        if saved_paths:
-            delete_stored_files(saved_paths)
-        raise
