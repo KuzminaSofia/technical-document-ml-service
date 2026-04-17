@@ -10,11 +10,22 @@ from sqlalchemy.orm import Session, selectinload
 
 from technical_document_ml_service.db.models import MLTaskORM, UploadedDocumentORM
 from technical_document_ml_service.domain.entities import (
+    DebitTransaction,
     DocumentExtractionTask,
     UploadedDocument,
 )
 from technical_document_ml_service.domain.enums import DocumentType, TaskStatus
-from technical_document_ml_service.domain.exceptions import NotFoundError
+from technical_document_ml_service.domain.exceptions import (
+    InsufficientBalanceError,
+    ModelUnavailableError,
+    NotFoundError,
+    TaskExecutionError,
+)
+from technical_document_ml_service.inference.mappers import (
+    build_backend_request,
+    build_prediction_result_from_backend_result,
+)
+from technical_document_ml_service.inference.selector import select_prediction_backend
 from technical_document_ml_service.services.billing_service import record_transaction
 from technical_document_ml_service.services.history_service import (
     create_history_record_from_task,
@@ -144,6 +155,26 @@ def _mark_task_as_failed(
     session.commit()
 
 
+def _ensure_processing_can_start(
+    *,
+    domain_task: DocumentExtractionTask,
+    domain_user,
+    domain_model,
+) -> None:
+    """проверить доменные предусловия выполнения задачи"""
+    if domain_user.id != domain_task.user_id:
+        raise TaskExecutionError("Задача не принадлежит переданному пользователю.")
+
+    if domain_model.id != domain_task.model_id:
+        raise TaskExecutionError("Задача не соответствует переданной модели.")
+
+    if not domain_model.is_active:
+        raise ModelUnavailableError("Выбранная ML-модель недоступна.")
+
+    if not domain_user.can_afford(domain_model.prediction_cost):
+        raise InsufficientBalanceError("Недостаточно средств для выполнения задачи.")
+
+
 def process_document_prediction_task(
     session: Session,
     *,
@@ -156,8 +187,9 @@ def process_document_prediction_task(
     1. загрузить задачу и связанные данные;
     2. проверить, нужно ли её реально обрабатывать;
     3. восстановить доменные объекты;
-    4. выполнить задачу;
-    5. сохранить результат, транзакцию и историю.
+    4. провалидировать входные данные и выбрать backend;
+    5. выполнить backend;
+    6. сохранить результат, транзакцию и историю.
     """
     task_orm = _load_task_for_processing(session, task_id)
     if task_orm is None:
@@ -203,7 +235,50 @@ def process_document_prediction_task(
     domain_task = _task_orm_to_domain(task_orm)
 
     try:
-        result, debit_transaction = domain_task.run(domain_user, domain_model)
+        _ensure_processing_can_start(
+            domain_task=domain_task,
+            domain_user=domain_user,
+            domain_model=domain_model,
+        )
+
+        domain_task.mark_as_validating()
+        validation_issues = domain_task.validate_input()
+
+        if not domain_task.get_valid_documents():
+            raise TaskExecutionError("Нет валидных документов для обработки.")
+
+        backend_request = build_backend_request(
+            task=domain_task,
+            model_orm=task_orm.model,
+        )
+
+        backend_selection = select_prediction_backend(
+            requested_backend_name=task_orm.model.backend_name,
+            backend_config=task_orm.model.backend_config,
+        )
+
+        domain_task.mark_as_processing()
+
+        backend_result = backend_selection.backend.process(backend_request)
+
+        result = build_prediction_result_from_backend_result(
+            task_id=domain_task.id,
+            backend_result=backend_result,
+            artifacts_dir=backend_request.artifacts_dir,
+        )
+        result.add_issues(validation_issues)
+
+        debit_transaction = DebitTransaction(
+            user_id=domain_user.id,
+            amount=domain_model.prediction_cost,
+            task_id=domain_task.id,
+        )
+        debit_transaction.apply(domain_user)
+
+        domain_task.mark_as_completed(
+            result_id=result.id,
+            spent_credits=domain_model.prediction_cost,
+        )
 
         sync_user_orm_from_domain(task_orm.user, domain_user)
         sync_task_orm_from_domain(task_orm, domain_task)
@@ -229,7 +304,10 @@ def process_document_prediction_task(
             completed_at=domain_task.finished_at,
             spent_credits=domain_task.spent_credits,
             was_processed=True,
-            message="Задача успешно обработана.",
+            message=(
+                f"Задача успешно обработана через backend "
+                f"'{backend_selection.resolved_backend_name}'."
+            ),
         )
 
     except Exception as exc:

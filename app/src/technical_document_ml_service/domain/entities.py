@@ -566,6 +566,46 @@ class MLTask(BaseEntity, ABC):
             raise TaskExecutionError("В очередь можно поставить только новую задачу.")
         self._status = TaskStatus.QUEUED
 
+    def mark_as_validating(self) -> None:
+        """перевести задачу в статус валидации"""
+        if self._status not in {TaskStatus.CREATED, TaskStatus.QUEUED}:
+            raise TaskExecutionError(
+                "На валидацию можно перевести только новую или поставленную в очередь задачу."
+            )
+        self._status = TaskStatus.VALIDATING
+
+    def mark_as_processing(self) -> None:
+        """перевести задачу в статус обработки"""
+        if self._status not in {
+            TaskStatus.CREATED,
+            TaskStatus.QUEUED,
+            TaskStatus.VALIDATING,
+        }:
+            raise TaskExecutionError(
+                "В обработку можно перевести только новую, queued или validating задачу."
+            )
+        self._status = TaskStatus.PROCESSING
+        if self._started_at is None:
+            self._started_at = datetime.now(UTC)
+
+    def mark_as_completed(
+        self,
+        *,
+        result_id: UUID,
+        spent_credits: Decimal,
+    ) -> None:
+        """завершить задачу успешно"""
+        if self._status not in {TaskStatus.PROCESSING, TaskStatus.VALIDATING}:
+            raise TaskExecutionError(
+                "Завершить можно только задачу, находящуюся в обработке."
+            )
+
+        self._status = TaskStatus.COMPLETED
+        self._spent_credits = spent_credits
+        self._result_id = result_id
+        self._error_message = None
+        self._finished_at = datetime.now(UTC)
+
     def run(self, user: User, model: MLModel) -> tuple[PredictionResult, DebitTransaction]:
         """выполнить задачу"""
         if user.id != self.user_id:
