@@ -33,3 +33,18 @@ class AuthResponse(BaseModel):
 
     message: str
     user: UserResponse
+
+
+class TokenResponse(BaseModel):
+    """ответ успешной выдачи JWT access token"""
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in_seconds: int
+    user: UserResponse
+
+
+class LogoutResponse(BaseModel):
+    """ответ успешного выхода пользователя"""
+
+    message: str
