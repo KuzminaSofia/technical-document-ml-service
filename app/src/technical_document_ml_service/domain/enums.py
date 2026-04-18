@@ -14,6 +14,7 @@ class TaskStatus(str, Enum):
     """статусы жизненного цикла ML-задачи"""
 
     CREATED = "created"
+    QUEUED = "queued"
     VALIDATING = "validating"
     PROCESSING = "processing"
     COMPLETED = "completed"

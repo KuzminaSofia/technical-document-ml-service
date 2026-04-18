@@ -24,6 +24,10 @@ def test_init_db_creates_demo_data_and_is_idempotent(session_factory) -> None:
     assert "technical-document-extractor-basic" in model_names
     assert "technical-document-extractor-advanced" in model_names
 
+    for model in models_after_first_run:
+        assert model.backend_name == "docling"
+        assert model.backend_config == {}
+
     init_db()
 
     with session_factory() as session:
@@ -32,3 +36,7 @@ def test_init_db_creates_demo_data_and_is_idempotent(session_factory) -> None:
 
     assert len(users_after_second_run) == 2
     assert len(models_after_second_run) == 2
+
+    for model in models_after_second_run:
+        assert model.backend_name == "docling"
+        assert model.backend_config == {}

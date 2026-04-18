@@ -2,30 +2,34 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile, status
 
 from technical_document_ml_service.api.deps import CurrentUserDep, SessionDep
-from technical_document_ml_service.api.schemas.predict import PredictResponse
+from technical_document_ml_service.api.schemas.predict import PredictAcceptedResponse
 from technical_document_ml_service.services.document_storage_service import (
     IncomingDocumentData,
 )
-from technical_document_ml_service.services.prediction_service import (
-    execute_document_prediction,
+from technical_document_ml_service.services.prediction_submission_service import (
+    submit_document_prediction,
 )
 
 
 router = APIRouter(prefix="/predict", tags=["predict"])
 
 
-@router.post("", response_model=PredictResponse)
+@router.post(
+    "",
+    response_model=PredictAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 def predict_documents(
     session: SessionDep,
     current_user: CurrentUserDep,
     model_name: Annotated[str, Form(min_length=1)],
     target_schema: Annotated[str, Form(min_length=1)],
     documents: Annotated[list[UploadFile], File(...)],
-) -> PredictResponse:
-    """отправить документы на ML-обработку"""
+) -> PredictAcceptedResponse:
+    """принять документы и поставить задачу на ML-обработку в очередь"""
     incoming_documents: list[IncomingDocumentData] = []
 
     try:
@@ -42,7 +46,7 @@ def predict_documents(
         for document in documents:
             document.file.close()
 
-    execution = execute_document_prediction(
+    submission = submit_document_prediction(
         session,
         user_id=current_user.id,
         model_name=model_name,
@@ -50,4 +54,9 @@ def predict_documents(
         documents=incoming_documents,
     )
 
-    return PredictResponse.from_execution(execution)
+    return PredictAcceptedResponse.create(
+        task_id=submission.task_id,
+        model_id=submission.model_id,
+        model_name=submission.model_name,
+        created_at=submission.created_at,
+    )

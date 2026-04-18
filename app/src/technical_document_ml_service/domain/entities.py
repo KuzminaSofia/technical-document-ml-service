@@ -13,7 +13,6 @@ from .exceptions import (
     DomainError,
     InsufficientBalanceError,
     InvalidAmountError,
-    ModelUnavailableError,
     TaskExecutionError,
 )
 
@@ -135,6 +134,7 @@ class UploadedDocument(BaseEntity):
         document_type: DocumentType = DocumentType.UNKNOWN,
         size_bytes: int = 0,
         entity_id: UUID | None = None,
+        uploaded_at: datetime | None = None,
     ) -> None:
         super().__init__(entity_id=entity_id)
         self._owner_id: UUID = owner_id
@@ -143,7 +143,7 @@ class UploadedDocument(BaseEntity):
         self._mime_type: str = mime_type
         self._document_type: DocumentType = document_type
         self._size_bytes: int = size_bytes
-        self._uploaded_at: datetime = datetime.now(UTC)
+        self._uploaded_at: datetime = uploaded_at or datetime.now(UTC)
 
     @property
     def owner_id(self) -> UUID:
@@ -218,8 +218,8 @@ class ValidationIssue(BaseEntity):
 
 class PredictionResult(BaseEntity):
     """результат работы ML-модели
-    содержит извлеченные структурированные данные и список ошибок,
-    найденных в процессе валидации входных данных
+    содержит извлеченные структурированные данные, список ошибок
+    валидации и сведения о сохраненных артефактах обработки
     """
 
     def __init__(
@@ -228,14 +228,19 @@ class PredictionResult(BaseEntity):
         extracted_data: dict[str, Any] | None = None,
         validation_issues: list[ValidationIssue] | None = None,
         output_path: str | None = None,
+        artifacts_dir: str | None = None,
+        artifacts_manifest: list[dict[str, Any]] | None = None,
         entity_id: UUID | None = None,
+        created_at: datetime | None = None,
     ) -> None:
         super().__init__(entity_id=entity_id)
         self._task_id: UUID = task_id
         self._extracted_data: dict[str, Any] = extracted_data or {}
         self._validation_issues: list[ValidationIssue] = validation_issues or []
         self._output_path: str | None = output_path
-        self._created_at: datetime = datetime.now(UTC)
+        self._artifacts_dir: str | None = artifacts_dir
+        self._artifacts_manifest: list[dict[str, Any]] = artifacts_manifest or []
+        self._created_at: datetime = created_at or datetime.now(UTC)
 
     @property
     def task_id(self) -> UUID:
@@ -256,6 +261,16 @@ class PredictionResult(BaseEntity):
     def output_path(self) -> str | None:
         """вернуть путь к сохраненному результату, если он есть"""
         return self._output_path
+
+    @property
+    def artifacts_dir(self) -> str | None:
+        """вернуть директорию с артефактами обработки, если она есть"""
+        return self._artifacts_dir
+
+    @property
+    def artifacts_manifest(self) -> list[dict[str, Any]]:
+        """вернуть описание сохраненных артефактов обработки"""
+        return self._artifacts_manifest
 
     @property
     def created_at(self) -> datetime:
@@ -284,12 +299,13 @@ class Transaction(BaseEntity, ABC):
         amount: Decimal,
         task_id: UUID | None = None,
         entity_id: UUID | None = None,
+        created_at: datetime | None = None,
     ) -> None:
         super().__init__(entity_id=entity_id)
         self._user_id: UUID = user_id
         self._amount: Decimal = amount
         self._task_id: UUID | None = task_id
-        self._created_at: datetime = datetime.now(UTC)
+        self._created_at: datetime = created_at or datetime.now(UTC)
 
     @property
     def user_id(self) -> UUID:
@@ -353,8 +369,8 @@ class DebitTransaction(Transaction):
         user._decrease_balance(self.amount)
 
 
-class MLModel(BaseEntity, ABC):
-    """абстрактная ML-модель, доступная в сервисе"""
+class MLModel(BaseEntity):
+    """абстракция ML-модели, доступной в сервисе"""
 
     def __init__(
         self,
@@ -398,17 +414,9 @@ class MLModel(BaseEntity, ABC):
         """деактивировать модель"""
         self._is_active = False
 
-    @abstractmethod
-    def predict(self, task: "MLTask") -> PredictionResult:
-        """выполнить предсказание для переданной задачи"""
-        raise NotImplementedError
-
 
 class TechnicalDocumentExtractionModel(MLModel):
-    """конкретная ML-модель для извлечения данных из технической документации
-    на текущем этапе это доменная абстракция
-    реальная логика OCR и извлечения будет добавлена позже
-    """
+    """доменная абстракция модели извлечения данных из технической документации"""
 
     def __init__(
         self,
@@ -433,33 +441,6 @@ class TechnicalDocumentExtractionModel(MLModel):
         """вернуть поддерживаемые типы документов"""
         return self._supported_document_types
 
-    def predict(self, task: "MLTask") -> PredictionResult:
-        """выполнить обработку переданной задачи"""
-        if not self.is_active:
-            raise ModelUnavailableError("Выбранная ML-модель недоступна.")
-
-        if not isinstance(task, DocumentExtractionTask):
-            raise TaskExecutionError("Передан неподдерживаемый тип задачи.")
-
-        valid_documents = task.get_valid_documents()
-        if not valid_documents:
-            raise TaskExecutionError("Нет валидных документов для обработки.")
-
-        extracted_data = {
-            doc.original_filename: {
-                "document_type": doc.document_type.value,
-                "target_schema": task.target_schema,
-                "status": "processed",
-            }
-            for doc in valid_documents
-        }
-
-        return PredictionResult(
-            task_id=task.id,
-            extracted_data=extracted_data,
-            validation_issues=[],
-        )
-
 
 class MLTask(BaseEntity, ABC):
     """абстрактная ML-задача
@@ -472,17 +453,24 @@ class MLTask(BaseEntity, ABC):
         user_id: UUID,
         model_id: UUID,
         entity_id: UUID | None = None,
+        status: TaskStatus = TaskStatus.CREATED,
+        created_at: datetime | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+        error_message: str | None = None,
+        spent_credits: Decimal = Decimal("0"),
+        result_id: UUID | None = None,
     ) -> None:
         super().__init__(entity_id=entity_id)
         self._user_id: UUID = user_id
         self._model_id: UUID = model_id
-        self._status: TaskStatus = TaskStatus.CREATED
-        self._created_at: datetime = datetime.now(UTC)
-        self._started_at: datetime | None = None
-        self._finished_at: datetime | None = None
-        self._error_message: str | None = None
-        self._spent_credits: Decimal = Decimal("0")
-        self._result_id: UUID | None = None
+        self._status: TaskStatus = status
+        self._created_at: datetime = created_at or datetime.now(UTC)
+        self._started_at: datetime | None = started_at
+        self._finished_at: datetime | None = finished_at
+        self._error_message: str | None = error_message
+        self._spent_credits: Decimal = spent_credits
+        self._result_id: UUID | None = result_id
 
     @property
     def user_id(self) -> UUID:
@@ -534,55 +522,51 @@ class MLTask(BaseEntity, ABC):
         """провалидировать входные данные задачи"""
         raise NotImplementedError
 
-    def run(self, user: User, model: MLModel) -> tuple[PredictionResult, DebitTransaction]:
-        """выполнить задачу
-        1. проверяет принадлежность задачи пользователю;
-        2. проверяет соответствие модели;
-        3. проверяет баланс;
-        4. выполняет валидацию входных данных;
-        5. запускает ML-модель;
-        6. добавляет найденные ошибки в результат;
-        7. списывает кредиты после успешного выполнения
-        """
-        if user.id != self.user_id:
-            raise TaskExecutionError("Задача не принадлежит переданному пользователю.")
+    def mark_as_queued(self) -> None:
+        """перевести новую задачу в статус ожидания обработки в очереди"""
+        if self._status != TaskStatus.CREATED:
+            raise TaskExecutionError("В очередь можно поставить только новую задачу.")
+        self._status = TaskStatus.QUEUED
 
-        if model.id != self.model_id:
-            raise TaskExecutionError("Задача не соответствует переданной модели.")
-
-        if not model.is_active:
-            raise ModelUnavailableError("Выбранная ML-модель недоступна.")
-
-        if not user.can_afford(model.prediction_cost):
-            raise InsufficientBalanceError("Недостаточно средств для выполнения задачи.")
-
-        self._status = TaskStatus.VALIDATING
-        validation_issues = self.validate_input()
-
-        self._status = TaskStatus.PROCESSING
-        self._started_at = datetime.now(UTC)
-
-        try:
-            result = model.predict(self)
-            result.add_issues(validation_issues)
-
-            debit_transaction = DebitTransaction(
-                user_id=user.id,
-                amount=model.prediction_cost,
-                task_id=self.id,
+    def mark_as_validating(self) -> None:
+        """перевести задачу в статус валидации"""
+        if self._status not in {TaskStatus.CREATED, TaskStatus.QUEUED}:
+            raise TaskExecutionError(
+                "На валидацию можно перевести только новую или поставленную в очередь задачу."
             )
-            debit_transaction.apply(user)
+        self._status = TaskStatus.VALIDATING
 
-            self._status = TaskStatus.COMPLETED
-            self._spent_credits = model.prediction_cost
-            self._result_id = result.id
-            self._finished_at = datetime.now(UTC)
+    def mark_as_processing(self) -> None:
+        """перевести задачу в статус обработки"""
+        if self._status not in {
+            TaskStatus.CREATED,
+            TaskStatus.QUEUED,
+            TaskStatus.VALIDATING,
+        }:
+            raise TaskExecutionError(
+                "В обработку можно перевести только новую, queued или validating задачу."
+            )
+        self._status = TaskStatus.PROCESSING
+        if self._started_at is None:
+            self._started_at = datetime.now(UTC)
 
-            return result, debit_transaction
+    def mark_as_completed(
+        self,
+        *,
+        result_id: UUID,
+        spent_credits: Decimal,
+    ) -> None:
+        """завершить задачу успешно"""
+        if self._status not in {TaskStatus.PROCESSING, TaskStatus.VALIDATING}:
+            raise TaskExecutionError(
+                "Завершить можно только задачу, находящуюся в обработке."
+            )
 
-        except DomainError as exc:
-            self.fail(str(exc))
-            raise
+        self._status = TaskStatus.COMPLETED
+        self._spent_credits = spent_credits
+        self._result_id = result_id
+        self._error_message = None
+        self._finished_at = datetime.now(UTC)
 
     def fail(self, error_message: str) -> None:
         """перевести задачу в статус ошибки"""
@@ -601,8 +585,26 @@ class DocumentExtractionTask(MLTask):
         documents: list[UploadedDocument],
         target_schema: str,
         entity_id: UUID | None = None,
+        status: TaskStatus = TaskStatus.CREATED,
+        created_at: datetime | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+        error_message: str | None = None,
+        spent_credits: Decimal = Decimal("0"),
+        result_id: UUID | None = None,
     ) -> None:
-        super().__init__(user_id=user_id, model_id=model_id, entity_id=entity_id)
+        super().__init__(
+            user_id=user_id,
+            model_id=model_id,
+            entity_id=entity_id,
+            status=status,
+            created_at=created_at,
+            started_at=started_at,
+            finished_at=finished_at,
+            error_message=error_message,
+            spent_credits=spent_credits,
+            result_id=result_id,
+        )
         self._documents: list[UploadedDocument] = documents
         self._target_schema: str = target_schema
 

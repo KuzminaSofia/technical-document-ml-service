@@ -56,6 +56,8 @@ def _ensure_model(
     prediction_cost: Decimal,
     model_kind: str,
     supported_document_types: list[str],
+    backend_name: str,
+    backend_config: dict,
     is_active: bool = True,
 ) -> None:
     existing_model = session.scalar(
@@ -71,6 +73,8 @@ def _ensure_model(
             prediction_cost=prediction_cost,
             model_kind=model_kind,
             supported_document_types=supported_document_types,
+            backend_name=backend_name,
+            backend_config=backend_config,
             is_active=is_active,
         )
     )
@@ -99,7 +103,9 @@ def seed_initial_data(session: Session) -> None:
         description="Базовая модель извлечения данных из технических документов",
         prediction_cost=Decimal("10.00"),
         model_kind="technical_document_extraction",
-        supported_document_types=[DocumentType.UNKNOWN.value]
+        supported_document_types=[DocumentType.UNKNOWN.value],
+        backend_name="docling",
+        backend_config={},
     )
     _ensure_model(
         session,
@@ -107,7 +113,9 @@ def seed_initial_data(session: Session) -> None:
         description="Расширенная модель извлечения и структурирования данных",
         prediction_cost=Decimal("25.00"),
         model_kind="technical_document_extraction",
-        supported_document_types=[DocumentType.UNKNOWN.value]
+        supported_document_types=[DocumentType.UNKNOWN.value],
+        backend_name="docling",
+        backend_config={},
     )
 
 

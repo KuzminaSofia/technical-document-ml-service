@@ -45,11 +45,11 @@ def clean_database() -> None:
 @pytest.fixture(autouse=True)
 def isolated_storage_dir(tmp_path) -> None:
     """
-    подменяет директорию хранения загружаемых файлов на временную
+    подменяет директории хранения файлов на временные
     для каждого теста
     """
-    object.__setattr__(app_settings, "storage_dir", str(tmp_path / "uploads"))
-
+    object.__setattr__(app_settings, "uploads_dir", str(tmp_path / "uploads"))
+    object.__setattr__(app_settings, "artifacts_dir", str(tmp_path / "artifacts"))
 
 @pytest.fixture
 def client():
@@ -100,6 +100,8 @@ def persisted_model(session_factory) -> MLModelORM:
             is_active=True,
             model_kind="technical_document_extraction",
             supported_document_types=["unknown"],
+            backend_name="docling",
+            backend_config={"allow_stub_fallback": True},
         )
         session.add(model)
         session.flush()
@@ -152,6 +154,28 @@ def low_balance_user(session_factory) -> UserORM:
 
     with session_factory() as session:
         return session.get(UserORM, user_id)
+    
+
+@pytest.fixture
+def another_api_user(session_factory) -> UserORM:
+    """
+    второй пользователь для API-тестов с достаточным балансом
+    """
+    with session_factory.begin() as session:
+        user = UserORM(
+            id=uuid4(),
+            email="another.api.user@example.com",
+            password_hash=hash_password("another-test-password"),
+            role=UserRole.USER.value,
+            balance_credits=Decimal("100.00"),
+            is_active=True,
+        )
+        session.add(user)
+        session.flush()
+        user_id = user.id
+
+    with session_factory() as session:
+        return session.get(UserORM, user_id)
 
 
 @pytest.fixture
@@ -168,6 +192,8 @@ def api_model(session_factory) -> MLModelORM:
             is_active=True,
             model_kind="technical_document_extraction",
             supported_document_types=["unknown"],
+            backend_name="docling",
+            backend_config={"allow_stub_fallback": True},
         )
         session.add(model)
         session.flush()
@@ -199,6 +225,17 @@ def auth_headers(basic_auth_header_factory) -> dict[str, str]:
 
 
 @pytest.fixture
+def another_auth_headers(basic_auth_header_factory) -> dict[str, str]:
+    """
+    Basic Auth заголовок для another_api_user
+    """
+    return basic_auth_header_factory(
+        "another.api.user@example.com",
+        "another-test-password",
+    )
+
+
+@pytest.fixture
 def low_balance_auth_headers(basic_auth_header_factory) -> dict[str, str]:
     """
     Basic Auth заголовок для low_balance_user
@@ -207,3 +244,27 @@ def low_balance_auth_headers(basic_auth_header_factory) -> dict[str, str]:
         "low.balance.user@example.com",
         "low-balance-password",
     )
+
+
+@pytest.fixture
+def publish_task_spy(monkeypatch):
+    """
+    подменяет реальную публикацию в RabbitMQ на spy-функцию
+    проверяет, что сообщение отправлено
+    """
+    published_messages = []
+
+    def _fake_publish(message, *, queue_name=None) -> None:
+        published_messages.append(
+            {
+                "message": message,
+                "queue_name": queue_name,
+            }
+        )
+
+    monkeypatch.setattr(
+        "technical_document_ml_service.services.prediction_submission_service.publish_prediction_task",
+        _fake_publish,
+    )
+
+    return published_messages
