@@ -50,6 +50,7 @@ def render_template(
         **context,
     }
     return templates.TemplateResponse(
+        request,
         template_name,
         template_context,
         status_code=status_code,
