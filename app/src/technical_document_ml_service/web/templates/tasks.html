@@ -7,7 +7,7 @@
             <p class="eyebrow">Задачи</p>
             <h1>Список ML-задач</h1>
             <p class="muted">
-                Здесь отображаются отправленные задачи и их текущие статусы.
+                Здесь отображаются отправленные задачи и их текущие статусы
             </p>
         </div>
 
@@ -26,7 +26,9 @@
                 <span>Статус</span>
                 <select name="status">
                     <option value="" {% if current_status == "" %}selected{% endif %}>Все</option>
+                    <option value="created" {% if current_status == "created" %}selected{% endif %}>created</option>
                     <option value="queued" {% if current_status == "queued" %}selected{% endif %}>queued</option>
+                    <option value="validating" {% if current_status == "validating" %}selected{% endif %}>validating</option>
                     <option value="processing" {% if current_status == "processing" %}selected{% endif %}>processing</option>
                     <option value="completed" {% if current_status == "completed" %}selected{% endif %}>completed</option>
                     <option value="failed" {% if current_status == "failed" %}selected{% endif %}>failed</option>

@@ -88,7 +88,7 @@ def _extract_jwt_token(
     return None
 
 
-def _authenticate_request(
+def authenticate_request(
     *,
     request: Request,
     session: Session,
@@ -121,7 +121,7 @@ def get_current_user(
     ],
 ) -> User:
     """получить текущего пользователя через write-session"""
-    return _authenticate_request(
+    return authenticate_request(
         request=request,
         session=session,
         basic_credentials=basic_credentials,
@@ -139,7 +139,7 @@ def get_current_read_user(
     ],
 ) -> User:
     """получить текущего пользователя через read-session"""
-    return _authenticate_request(
+    return authenticate_request(
         request=request,
         session=session,
         basic_credentials=basic_credentials,

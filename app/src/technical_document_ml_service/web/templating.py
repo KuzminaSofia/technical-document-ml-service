@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 from starlette.responses import Response
 
 
@@ -13,6 +15,22 @@ TEMPLATES_DIR = WEB_DIR / "templates"
 STATIC_DIR = WEB_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def pretty_json(value: Any) -> Markup:
+    """
+    отрендерить объект в читаемый JSON без ASCII-экранирования кириллицы
+    """
+    rendered = json.dumps(
+        value,
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
+    return Markup(rendered)
+
+
+templates.env.filters["pretty_json"] = pretty_json
 
 
 def render_template(

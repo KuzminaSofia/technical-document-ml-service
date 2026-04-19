@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -17,7 +18,6 @@ from technical_document_ml_service.api.schemas.tasks import (
     TaskListQueryParams,
     TaskResultResponse,
 )
-from technical_document_ml_service.db.models import MLModelORM
 from technical_document_ml_service.services.billing_service import get_user_transactions
 from technical_document_ml_service.services.history_service import (
     get_user_prediction_history,
@@ -28,36 +28,12 @@ from technical_document_ml_service.services.task_query_service import (
     get_user_tasks,
 )
 from technical_document_ml_service.web.deps import CurrentOptionalWebUserDep
+from technical_document_ml_service.web.model_catalog import get_active_models
 from technical_document_ml_service.web.templating import render_template
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["web-pages"])
-
-
-def _serialize_models(models: list[MLModelORM]) -> list[dict]:
-    """подготовить список моделей для шаблона"""
-    return [
-        {
-            "id": str(model.id),
-            "name": model.name,
-            "description": model.description,
-            "prediction_cost": str(model.prediction_cost),
-            "backend_name": model.backend_name,
-            "model_kind": model.model_kind,
-        }
-        for model in models
-    ]
-
-
-def _get_active_models(session) -> list[dict]:
-    """получить список активных ML-моделей"""
-    models = (
-        session.query(MLModelORM)
-        .filter(MLModelORM.is_active.is_(True))
-        .order_by(MLModelORM.name.asc())
-        .all()
-    )
-    return _serialize_models(models)
 
 
 @router.get("/", name="home_page")
@@ -164,7 +140,7 @@ def predict_page(
     if current_user is None:
         return RedirectResponse(url="/login", status_code=303)
 
-    models = _get_active_models(session)
+    models = get_active_models(session)
 
     return render_template(
         request,
@@ -266,7 +242,11 @@ def task_detail_page(
     )
     task = TaskDetailsResponse.from_item(task_details).model_dump(mode="json")
 
-    result_data = None
+    result_bundle = None
+    result = None
+    artifacts: list[dict] = []
+    result_warning_message = None
+
     task_status = str(task.get("status", "")).lower()
     if task_status == "completed":
         try:
@@ -275,9 +255,21 @@ def task_detail_page(
                 user_id=current_user.id,
                 task_id=task_id,
             )
-            result_data = TaskResultResponse.from_bundle(bundle).model_dump(mode="json")
+            result_bundle = TaskResultResponse.from_bundle(bundle).model_dump(mode="json")
+            result = result_bundle.get("result")
+            artifacts = result_bundle.get("artifacts", [])
         except Exception:
-            result_data = None
+            logger.exception(
+                "Failed to load task result for task_id=%s user_id=%s",
+                task_id,
+                current_user.id,
+            )
+            result_bundle = None
+            result = None
+            artifacts = []
+            result_warning_message = (
+                "Задача завершена, но результат пока не удалось отобразить."
+            )
 
     auto_refresh = task_status not in {"completed", "failed"}
 
@@ -287,7 +279,10 @@ def task_detail_page(
         page_title=f"Задача {task_id}",
         current_user=current_user,
         task=task,
-        result_data=result_data,
+        result_bundle=result_bundle,
+        result=result,
+        artifacts=artifacts,
+        result_warning_message=result_warning_message,
         auto_refresh=auto_refresh,
     )
 

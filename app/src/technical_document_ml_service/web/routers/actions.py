@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
@@ -14,7 +15,6 @@ from technical_document_ml_service.core.security import (
     get_jwt_expire_minutes,
     is_auth_cookie_secure,
 )
-from technical_document_ml_service.db.models import MLModelORM
 from technical_document_ml_service.domain.exceptions import (
     AuthenticationError,
     AuthorizationError,
@@ -31,9 +31,12 @@ from technical_document_ml_service.services.prediction_submission_service import
     submit_document_prediction,
 )
 from technical_document_ml_service.web.deps import CurrentOptionalWebUserDep
+from technical_document_ml_service.web.model_catalog import get_active_models
+from technical_document_ml_service.web.security import ensure_same_origin
 from technical_document_ml_service.web.templating import render_template
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["web-actions"])
 
 
@@ -68,27 +71,6 @@ def _set_auth_cookie(
     )
 
 
-def _serialize_models(session) -> list[dict]:
-    """получить активные модели для web-формы отправки задачи"""
-    models = (
-        session.query(MLModelORM)
-        .filter(MLModelORM.is_active.is_(True))
-        .order_by(MLModelORM.name.asc())
-        .all()
-    )
-    return [
-        {
-            "id": str(model.id),
-            "name": model.name,
-            "description": model.description,
-            "prediction_cost": str(model.prediction_cost),
-            "backend_name": model.backend_name,
-            "model_kind": model.model_kind,
-        }
-        for model in models
-    ]
-
-
 @router.post("/login", name="login_action")
 def login_action(
     request: Request,
@@ -97,6 +79,7 @@ def login_action(
     password: str = Form(...),
 ):
     """обработать web-форму входа"""
+    ensure_same_origin(request)
     normalized_email = email.strip().lower()
 
     try:
@@ -114,6 +97,17 @@ def login_action(
             form_data={"email": normalized_email},
             error_message=str(exc),
             status_code=401,
+        )
+    except Exception:
+        logger.exception("Unexpected error during web login.")
+        return render_template(
+            request,
+            "login.html",
+            page_title="Вход",
+            current_user=None,
+            form_data={"email": normalized_email},
+            error_message="Не удалось выполнить вход. Попробуйте ещё раз.",
+            status_code=500,
         )
 
     access_token, expires_in_seconds = _build_access_token(
@@ -134,6 +128,7 @@ def register_action(
     password: str = Form(...),
 ):
     """обработать web-форму регистрации"""
+    ensure_same_origin(request)
     normalized_email = email.strip().lower()
 
     try:
@@ -142,14 +137,18 @@ def register_action(
             email=normalized_email,
             password=password,
         )
-    except Exception as exc:
+    except Exception:
+        logger.exception("Unexpected error during web registration.")
         return render_template(
             request,
             "register.html",
             page_title="Регистрация",
             current_user=None,
             form_data={"email": normalized_email},
-            error_message=str(exc),
+            error_message=(
+                "Не удалось зарегистрировать пользователя. "
+                "Проверьте корректность данных или попробуйте другой email."
+            ),
             status_code=400,
         )
 
@@ -164,11 +163,9 @@ def register_action(
 
 
 @router.post("/logout", name="logout_action")
-def logout_action(
-    current_user: CurrentOptionalWebUserDep,
-):
+def logout_action(request: Request):
     """выйти из web-интерфейса"""
-    _ = current_user
+    ensure_same_origin(request)
 
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie(
@@ -189,6 +186,8 @@ def top_up_action(
     amount: str = Form(...),
 ):
     """обработать форму пополнения баланса"""
+    ensure_same_origin(request)
+
     if current_user is None:
         return RedirectResponse(url="/login", status_code=303)
 
@@ -214,16 +213,17 @@ def top_up_action(
             user_id=current_user.id,
             amount=parsed_amount,
         )
-    except Exception as exc:
+    except Exception:
+        logger.exception("Unexpected error during balance top-up.")
         return render_template(
             request,
             "balance.html",
             page_title="Баланс",
             current_user=current_user,
             success_message=None,
-            error_message=str(exc),
+            error_message="Не удалось пополнить баланс. Попробуйте ещё раз.",
             form_data={"amount": amount},
-            status_code=400,
+            status_code=500,
         )
 
     return RedirectResponse(url="/balance-ui?success=topup", status_code=303)
@@ -239,10 +239,12 @@ def predict_submit_action(
     documents: list[UploadFile] | None = None,
 ):
     """обработать web-форму отправки ML-задачи"""
+    ensure_same_origin(request)
+
     if current_user is None:
         return RedirectResponse(url="/login", status_code=303)
 
-    models = _serialize_models(session)
+    models = get_active_models(session)
 
     if not documents:
         return render_template(
@@ -283,14 +285,18 @@ def predict_submit_action(
             target_schema=target_schema,
             documents=incoming_documents,
         )
-    except Exception as exc:
+    except Exception:
+        logger.exception("Unexpected error during web prediction submission.")
         return render_template(
             request,
             "predict.html",
             page_title="Новая ML-задача",
             current_user=current_user,
             models=models,
-            error_message=str(exc),
+            error_message=(
+                "Не удалось отправить задачу. "
+                "Проверьте баланс, выбранную модель и загруженные документы."
+            ),
             form_data={
                 "model_name": model_name,
                 "target_schema": target_schema,

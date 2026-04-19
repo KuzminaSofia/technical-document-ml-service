@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBasicCredentials
 
 from technical_document_ml_service.api.deps import (
     ReadSessionDep,
-    _authenticate_request,
+    authenticate_request,
     http_basic,
     http_bearer,
 )
@@ -28,7 +28,7 @@ def get_optional_web_user(
     получить текущего пользователя для web-страниц
     """
     try:
-        return _authenticate_request(
+        return authenticate_request(
             request=request,
             session=session,
             basic_credentials=basic_credentials,
