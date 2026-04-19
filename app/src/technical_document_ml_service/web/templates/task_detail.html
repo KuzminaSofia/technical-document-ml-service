@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section" data-task-auto-refresh="{{ 'true' if auto_refresh else 'false' }}">
+    <div class="page-header-block">
+        <div>
+            <p class="eyebrow">Детали задачи</p>
+            <h1>Задача {{ task.id }}</h1>
+            <p class="muted">
+                На этой странице можно отслеживать статус обработки и просматривать результат.
+            </p>
+        </div>
+
+        <div class="header-actions">
+            <a class="button button-secondary" href="{{ request.url_for('tasks_page') }}">
+                Ко всем задачам
+            </a>
+            <a class="button button-primary" href="{{ request.url_for('predict_page') }}">
+                Новая задача
+            </a>
+        </div>
+    </div>
+
+    {% if auto_refresh %}
+        <div class="alert alert-info">
+            Задача ещё обрабатывается. Страница будет автоматически обновляться каждые 5 секунд.
+        </div>
+    {% endif %}
+
+    <div class="two-column-grid">
+        <article class="card">
+            <h2>Основная информация</h2>
+            <dl class="kv-list">
+                <div>
+                    <dt>ID</dt>
+                    <dd class="mono">{{ task.id }}</dd>
+                </div>
+                <div>
+                    <dt>Статус</dt>
+                    <dd>
+                        <span class="status-pill status-pill-{{ task.status }}">
+                            {{ task.status }}
+                        </span>
+                    </dd>
+                </div>
+                <div>
+                    <dt>Модель</dt>
+                    <dd>{{ task.model_name or task.model_id }}</dd>
+                </div>
+                <div>
+                    <dt>Target schema</dt>
+                    <dd>{{ task.target_schema or "—" }}</dd>
+                </div>
+                <div>
+                    <dt>Создана</dt>
+                    <dd>{{ task.created_at or "—" }}</dd>
+                </div>
+                <div>
+                    <dt>Запущена</dt>
+                    <dd>{{ task.started_at or "—" }}</dd>
+                </div>
+                <div>
+                    <dt>Завершена</dt>
+                    <dd>{{ task.completed_at or "—" }}</dd>
+                </div>
+                <div>
+                    <dt>Списано</dt>
+                    <dd>{{ task.spent_credits or "0.00" }}</dd>
+                </div>
+                <div>
+                    <dt>Ошибка</dt>
+                    <dd>{{ task.error_message or "—" }}</dd>
+                </div>
+            </dl>
+        </article>
+
+        <article class="card">
+            <h2>Документы</h2>
+            {% if task.documents %}
+                <ul class="simple-list">
+                    {% for document in task.documents %}
+                        <li>
+                            <strong>{{ document.filename }}</strong>
+                            <div class="muted small">
+                                {{ document.mime_type }} · {{ document.document_type }}
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="muted">Документы не найдены.</p>
+            {% endif %}
+        </article>
+    </div>
+
+    <article class="card">
+        <h2>Сырые данные задачи</h2>
+        <pre class="json-block">{{ task | tojson(indent=2) }}</pre>
+    </article>
+
+    {% if result_data %}
+        <article class="card">
+            <h2>Результат обработки</h2>
+            <pre class="json-block">{{ result_data | tojson(indent=2) }}</pre>
+        </article>
+    {% elif task.status == "completed" %}
+        <article class="card">
+            <h2>Результат обработки</h2>
+            <p class="muted">Задача завершена, но результат пока не удалось отобразить в WebUI.</p>
+        </article>
+    {% endif %}
+</section>
+
+<script src="{{ request.url_for('static', path='js/task_polling.js') }}"></script>
+{% endblock %}
