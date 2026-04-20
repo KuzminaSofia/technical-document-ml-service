@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header-block">
+        <div>
+            <p class="eyebrow">Задачи</p>
+            <h1>Список ML-задач</h1>
+            <p class="muted">
+                Здесь отображаются отправленные задачи и их текущие статусы
+            </p>
+        </div>
+
+        <a class="button button-primary" href="{{ request.url_for('predict_page') }}">
+            Новая задача
+        </a>
+    </div>
+
+    <article class="card">
+        {% if error_message %}
+            <div class="alert alert-error">{{ error_message }}</div>
+        {% endif %}
+
+        <form method="get" action="{{ request.url_for('tasks_page') }}" class="filter-form">
+            <label class="form-label compact">
+                <span>Статус</span>
+                <select name="status">
+                    <option value="" {% if current_status == "" %}selected{% endif %}>Все</option>
+                    <option value="created" {% if current_status == "created" %}selected{% endif %}>created</option>
+                    <option value="queued" {% if current_status == "queued" %}selected{% endif %}>queued</option>
+                    <option value="validating" {% if current_status == "validating" %}selected{% endif %}>validating</option>
+                    <option value="processing" {% if current_status == "processing" %}selected{% endif %}>processing</option>
+                    <option value="completed" {% if current_status == "completed" %}selected{% endif %}>completed</option>
+                    <option value="failed" {% if current_status == "failed" %}selected{% endif %}>failed</option>
+                </select>
+            </label>
+
+            <label class="form-label compact">
+                <span>Лимит</span>
+                <input type="number" name="limit" value="{{ limit }}" min="1" max="100">
+            </label>
+
+            <label class="form-label compact">
+                <span>Offset</span>
+                <input type="number" name="offset" value="{{ offset }}" min="0">
+            </label>
+
+            <button type="submit" class="button button-secondary">
+                Применить
+            </button>
+        </form>
+    </article>
+
+    <article class="card">
+        {% if tasks %}
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Статус</th>
+                            <th>Модель</th>
+                            <th>Создана</th>
+                            <th>Списано</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                            <tr>
+                                <td class="mono">{{ task.id }}</td>
+                                <td>
+                                    <span class="status-pill status-pill-{{ task.status }}">
+                                        {{ task.status }}
+                                    </span>
+                                </td>
+                                <td>{{ task.model_name or task.model_id }}</td>
+                                <td>{{ task.created_at }}</td>
+                                <td>{{ task.spent_credits }}</td>
+                                <td>
+                                    <a href="{{ request.url_for('task_detail_page', task_id=task.id) }}">
+                                        Открыть
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="muted">Задачи пока отсутствуют.</p>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section" data-current-balance="{{ current_user.balance_credits }}">
+    <div class="page-header-block">
+        <div>
+            <p class="eyebrow">ML-задача</p>
+            <h1>Создать новую задачу</h1>
+            <p class="muted">
+                После отправки документы будут поставлены в очередь на обработку,
+                а детальный результат появится на странице задачи.
+            </p>
+        </div>
+    </div>
+
+    <div class="predict-layout">
+        <article class="card">
+            <h2>Параметры задачи</h2>
+
+            {% if error_message %}
+                <div class="alert alert-error">{{ error_message }}</div>
+            {% endif %}
+
+            <form
+                method="post"
+                action="{{ request.url_for('predict_submit_action') }}"
+                enctype="multipart/form-data"
+                class="form-stack"
+                id="predict-form"
+            >
+                <label class="form-label">
+                    <span>Модель</span>
+                    <select name="model_name" id="model-name-select" required>
+                        {% for model in models %}
+                            <option
+                                value="{{ model.name }}"
+                                data-cost="{{ model.prediction_cost }}"
+                                data-backend="{{ model.backend_name }}"
+                                data-kind="{{ model.model_kind }}"
+                                data-description="{{ model.description }}"
+                                {% if form_data.model_name == model.name %}selected{% endif %}
+                            >
+                                {{ model.name }} — {{ model.prediction_cost }} credits
+                            </option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <label class="form-label">
+                    <span>Target schema</span>
+                    <input
+                        type="text"
+                        name="target_schema"
+                        value="{{ form_data.target_schema }}"
+                        required
+                    >
+                </label>
+
+                <label class="form-label">
+                    <span>Документы</span>
+                    <input
+                        type="file"
+                        name="documents"
+                        multiple
+                        required
+                    >
+                </label>
+
+                <button type="submit" class="button button-primary button-full">
+                    Отправить задачу
+                </button>
+            </form>
+        </article>
+
+        <aside class="predict-sidebar">
+            <article class="card">
+                <h2>Баланс и стоимость</h2>
+
+                <div class="predict-summary-grid">
+                    <div class="meta-tile">
+                        <span class="meta-tile-label">Текущий баланс</span>
+                        <strong id="current-balance-value">{{ current_user.balance_credits }}</strong>
+                    </div>
+
+                    <div class="meta-tile">
+                        <span class="meta-tile-label">Стоимость модели</span>
+                        <strong id="selected-model-cost">—</strong>
+                    </div>
+                </div>
+
+                <div id="balance-check-box" class="balance-check-box">
+                    <span class="balance-check-label">Проверка баланса</span>
+                    <strong id="balance-check-text">—</strong>
+                </div>
+
+                <p class="muted">
+                    Это предварительная подсказка интерфейса. Финальная проверка баланса
+                    и списание выполняются на стороне backend.
+                </p>
+            </article>
+
+            <article class="card">
+                <h2>Выбранная модель</h2>
+
+                {% if models %}
+                    <div class="stack-list">
+                        <div class="model-card">
+                            <div class="model-card-header">
+                                <strong id="selected-model-name">—</strong>
+                                <span id="selected-model-cost-pill" class="status-pill status-pill-neutral">—</span>
+                            </div>
+
+                            <p id="selected-model-description" class="muted">—</p>
+
+                            <div class="meta-row">
+                                <span>backend: <strong id="selected-model-backend">—</strong></span>
+                                <span>kind: <strong id="selected-model-kind">—</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="muted">Активные модели не найдены.</p>
+                {% endif %}
+            </article>
+        </aside>
+    </div>
+</section>
+
+<script>
+    (() => {
+        const root = document.querySelector("[data-current-balance]");
+        const select = document.getElementById("model-name-select");
+        if (!root || !select) {
+            return;
+        }
+
+        const currentBalance = Number((root.dataset.currentBalance || "0").replace(",", "."));
+
+        const selectedModelName = document.getElementById("selected-model-name");
+        const selectedModelDescription = document.getElementById("selected-model-description");
+        const selectedModelBackend = document.getElementById("selected-model-backend");
+        const selectedModelKind = document.getElementById("selected-model-kind");
+        const selectedModelCost = document.getElementById("selected-model-cost");
+        const selectedModelCostPill = document.getElementById("selected-model-cost-pill");
+        const balanceCheckBox = document.getElementById("balance-check-box");
+        const balanceCheckText = document.getElementById("balance-check-text");
+
+        function updateModelInfo() {
+            const option = select.options[select.selectedIndex];
+            if (!option) {
+                return;
+            }
+
+            const modelName = option.value || "—";
+            const modelCostRaw = option.dataset.cost || "0";
+            const modelCost = Number(modelCostRaw.replace(",", "."));
+            const backend = option.dataset.backend || "—";
+            const kind = option.dataset.kind || "—";
+            const description = option.dataset.description || "Описание отсутствует.";
+
+            selectedModelName.textContent = modelName;
+            selectedModelDescription.textContent = description;
+            selectedModelBackend.textContent = backend;
+            selectedModelKind.textContent = kind;
+            selectedModelCost.textContent = `${modelCostRaw} credits`;
+            selectedModelCostPill.textContent = `${modelCostRaw} credits`;
+
+            const enoughBalance = currentBalance >= modelCost;
+            balanceCheckText.textContent = enoughBalance
+                ? "Баланс достаточен"
+                : "Недостаточно средств";
+
+            balanceCheckBox.classList.remove("balance-ok", "balance-bad");
+            balanceCheckBox.classList.add(enoughBalance ? "balance-ok" : "balance-bad");
+        }
+
+        select.addEventListener("change", updateModelInfo);
+        updateModelInfo();
+    })();
+</script>
+{% endblock %}

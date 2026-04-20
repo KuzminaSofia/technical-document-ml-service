@@ -73,7 +73,7 @@ def persisted_user(session_factory) -> UserORM:
         user = UserORM(
             id=uuid4(),
             email="persisted.user@example.com",
-            password_hash="hashed-password",
+            password_hash=hash_password("persisted-user-password"),
             role=UserRole.USER.value,
             balance_credits=Decimal("100.00"),
             is_active=True,
@@ -268,3 +268,13 @@ def publish_task_spy(monkeypatch):
     )
 
     return published_messages
+
+@pytest.fixture
+def same_origin_headers() -> dict[str, str]:
+    """
+    заголовки для прохождения same-origin проверки в WebUI POST-формах
+    """
+    return {
+        "Origin": "http://testserver",
+        "Referer": "http://testserver/",
+    }
