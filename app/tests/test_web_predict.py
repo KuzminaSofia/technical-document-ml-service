@@ -113,8 +113,10 @@ def test_tasks_page_renders_and_filters_queued_tasks(
     response = client.get("/tasks-ui?status=queued&limit=50&offset=0")
 
     assert response.status_code == 200
-    assert "Список ML-задач" in response.text
-    assert api_model.name in response.text
+    assert "История запросов обработки" in response.text
+    assert "Request ID" in response.text
+    assert "queued-task.pdf" in response.text
+    assert "convert" in response.text
     assert "queued" in response.text
 
 
@@ -149,9 +151,20 @@ def test_task_detail_page_renders_after_submit(
     response = client.get(task_location)
 
     assert response.status_code == 200
-    assert "Детали задачи" in response.text
+    assert "Document processing workspace" in response.text
+    assert "Request ID" in response.text
     assert "detail-view.pdf" in response.text
     assert api_model.name in response.text
+
+    assert "Convert" in response.text
+    assert "Segment" in response.text
+    assert "Extract" in response.text
+
+    assert "Исходный документ" in response.text
+    assert "Результат преобразования" in response.text
+    assert "Markdown" in response.text
+    assert "Artifacts" in response.text
+    assert "Raw JSON" in response.text
 
 
 def test_task_filter_with_invalid_status_shows_error_on_page(

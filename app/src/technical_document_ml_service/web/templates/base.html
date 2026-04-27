@@ -18,10 +18,10 @@
 
                 {% if current_user %}
                     <a href="{{ request.url_for('dashboard_page') }}">Кабинет</a>
+                    <a href="{{ request.url_for('predict_page') }}">Новый документ</a>
+                    <a href="{{ request.url_for('tasks_page') }}">История запросов</a>
                     <a href="{{ request.url_for('balance_page') }}">Баланс</a>
-                    <a href="{{ request.url_for('predict_page') }}">Новая задача</a>
-                    <a href="{{ request.url_for('tasks_page') }}">Задачи</a>
-                    <a href="{{ request.url_for('history_page') }}">История</a>
+                    <a href="{{ request.url_for('history_page') }}">Операции</a>
 
                     <form method="post" action="{{ request.url_for('logout_action') }}" class="inline-form">
                         <button type="submit" class="link-button">Выйти</button>

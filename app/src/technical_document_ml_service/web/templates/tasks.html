@@ -1,29 +1,30 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="page-section">
+<section class="page-section request-history-page">
     <div class="page-header-block">
         <div>
-            <p class="eyebrow">Задачи</p>
-            <h1>Список ML-задач</h1>
+            <p class="eyebrow">Request history</p>
+            <h1>История запросов обработки</h1>
             <p class="muted">
-                Здесь отображаются отправленные задачи и их текущие статусы
+                Каждый запрос соответствует асинхронной обработке одного или нескольких документов.
+                Нажмите на Request ID, чтобы открыть рабочую область с результатами.
             </p>
         </div>
 
         <a class="button button-primary" href="{{ request.url_for('predict_page') }}">
-            Новая задача
+            Новый документ
         </a>
     </div>
 
-    <article class="card">
+    <article class="card request-filter-card">
         {% if error_message %}
             <div class="alert alert-error">{{ error_message }}</div>
         {% endif %}
 
         <form method="get" action="{{ request.url_for('tasks_page') }}" class="filter-form">
             <label class="form-label compact">
-                <span>Статус</span>
+                <span>Status</span>
                 <select name="status">
                     <option value="" {% if current_status == "" %}selected{% endif %}>Все</option>
                     <option value="created" {% if current_status == "created" %}selected{% endif %}>created</option>
@@ -36,7 +37,7 @@
             </label>
 
             <label class="form-label compact">
-                <span>Лимит</span>
+                <span>Limit</span>
                 <input type="number" name="limit" value="{{ limit }}" min="1" max="100">
             </label>
 
@@ -51,36 +52,60 @@
         </form>
     </article>
 
-    <article class="card">
+    <article class="card request-history-card">
         {% if tasks %}
             <div class="table-wrapper">
-                <table class="data-table">
+                <table class="data-table request-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Статус</th>
-                            <th>Модель</th>
-                            <th>Создана</th>
-                            <th>Списано</th>
-                            <th></th>
+                            <th>Created</th>
+                            <th>Request ID</th>
+                            <th>Filename</th>
+                            <th>Pages</th>
+                            <th>Request type</th>
+                            <th>Status</th>
+                            <th>Backend</th>
+                            <th>Cost</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for task in tasks %}
                             <tr>
-                                <td class="mono">{{ task.id }}</td>
+                                <td class="request-created">
+                                    {{ task.created_at }}
+                                </td>
+
+                                <td>
+                                    <a
+                                        class="mono request-id-link"
+                                        href="{{ request.url_for('task_detail_page', task_id=task.id) }}"
+                                    >
+                                        {{ task.id }}
+                                    </a>
+                                </td>
+
+                                <td class="request-filename">
+                                    {{ task.first_document_name or "—" }}
+                                </td>
+
+                                <td>—</td>
+
+                                <td>
+                                    <span class="request-type-pill">convert</span>
+                                </td>
+
                                 <td>
                                     <span class="status-pill status-pill-{{ task.status }}">
                                         {{ task.status }}
                                     </span>
                                 </td>
-                                <td>{{ task.model_name or task.model_id }}</td>
-                                <td>{{ task.created_at }}</td>
-                                <td>{{ task.spent_credits }}</td>
+
                                 <td>
-                                    <a href="{{ request.url_for('task_detail_page', task_id=task.id) }}">
-                                        Открыть
-                                    </a>
+                                    {{ task.backend_name }}
+                                </td>
+
+                                <td>
+                                    {{ task.spent_credits }}
                                 </td>
                             </tr>
                         {% endfor %}
@@ -88,7 +113,15 @@
                 </table>
             </div>
         {% else %}
-            <p class="muted">Задачи пока отсутствуют.</p>
+            <div class="empty-state">
+                <h2>Запросов пока нет</h2>
+                <p class="muted">
+                    Загрузите первый документ, чтобы создать запрос обработки.
+                </p>
+                <a class="button button-primary" href="{{ request.url_for('predict_page') }}">
+                    Загрузить документ
+                </a>
+            </div>
         {% endif %}
     </article>
 </section>
