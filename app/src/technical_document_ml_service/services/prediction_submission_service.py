@@ -40,6 +40,7 @@ class PredictionSubmissionResult:
     model_name: str
     status: TaskStatus
     created_at: datetime
+    callback_url: str | None
 
 
 def submit_document_prediction(
@@ -49,6 +50,7 @@ def submit_document_prediction(
     model_name: str,
     target_schema: str,
     documents: list[IncomingDocumentData],
+    callback_url: str | None = None,
 ) -> PredictionSubmissionResult:
     """
     поставить задачу обработки документов в очередь
@@ -95,6 +97,7 @@ def submit_document_prediction(
             model_id=domain_model.id,
             documents=domain_documents,
             target_schema=target_schema,
+            callback_url=callback_url,
         )
         task.mark_as_queued()
 
@@ -125,6 +128,7 @@ def submit_document_prediction(
             model_name=domain_model.name,
             status=task.status,
             created_at=task.created_at,
+            callback_url=callback_url,
         )
 
     except Exception:

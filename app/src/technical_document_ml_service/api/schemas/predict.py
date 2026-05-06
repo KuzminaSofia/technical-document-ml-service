@@ -37,6 +37,7 @@ class PredictAcceptedResponse(BaseModel):
     model_name: str
     status: TaskStatus
     created_at: datetime
+    callback_url: str | None
     message: str
 
     @classmethod
@@ -47,6 +48,7 @@ class PredictAcceptedResponse(BaseModel):
         model_id: UUID,
         model_name: str,
         created_at: datetime,
+        callback_url: str | None = None,
         message: str = "Задача принята и поставлена в очередь на обработку.",
     ) -> "PredictAcceptedResponse":
         return cls(
@@ -55,5 +57,6 @@ class PredictAcceptedResponse(BaseModel):
             model_name=model_name,
             status=TaskStatus.QUEUED,
             created_at=created_at,
+            callback_url=callback_url,
             message=message,
         )

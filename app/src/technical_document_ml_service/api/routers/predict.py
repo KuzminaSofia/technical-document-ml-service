@@ -28,6 +28,7 @@ def predict_documents(
     model_name: Annotated[str, Form(min_length=1)],
     target_schema: Annotated[str, Form(min_length=1)],
     documents: Annotated[list[UploadFile], File(...)],
+    callback_url: Annotated[str | None, Form()] = None,
 ) -> PredictAcceptedResponse:
     """принять документы и поставить задачу на ML-обработку в очередь"""
     incoming_documents: list[IncomingDocumentData] = []
@@ -52,6 +53,7 @@ def predict_documents(
         model_name=model_name,
         target_schema=target_schema,
         documents=incoming_documents,
+        callback_url=callback_url or None,
     )
 
     return PredictAcceptedResponse.create(
@@ -59,4 +61,5 @@ def predict_documents(
         model_id=submission.model_id,
         model_name=submission.model_name,
         created_at=submission.created_at,
+        callback_url=submission.callback_url,
     )

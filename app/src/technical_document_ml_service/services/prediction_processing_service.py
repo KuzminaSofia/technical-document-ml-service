@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -40,6 +40,7 @@ from technical_document_ml_service.services.prediction_service import (
     model_orm_to_domain,
     persist_prediction_result,
 )
+from technical_document_ml_service.services.webhook_service import send_task_webhook
 
 
 LOGGER = logging.getLogger("technical_document_ml_service.prediction_processing")
@@ -78,6 +79,7 @@ def _task_orm_to_domain(task_orm: MLTaskORM) -> DocumentExtractionTask:
         error_message=task_orm.error_message,
         spent_credits=task_orm.spent_credits,
         result_id=result_id,
+        callback_url=task_orm.callback_url,
     )
 
 
@@ -176,6 +178,9 @@ def process_document_prediction_task(
     task_orm = _load_task_for_processing(session, task_id)
     if task_orm is None:
         raise NotFoundError(f"Задача с id={task_id} не найдена.")
+
+    callback_url: str | None = task_orm.callback_url
+    model_name_for_webhook: str = task_orm.model.name
 
     current_status = TaskStatus(task_orm.status)
 
@@ -290,6 +295,18 @@ def process_document_prediction_task(
 
         session.commit()
 
+        if callback_url:
+            send_task_webhook(
+                url=callback_url,
+                task_id=domain_task.id,
+                status=domain_task.status,
+                model_name=model_name_for_webhook,
+                result_id=domain_task.result_id,
+                spent_credits=domain_task.spent_credits,
+                completed_at=domain_task.finished_at,
+                error_message=None,
+            )
+
         return PredictionProcessingResult(
             task_id=domain_task.id,
             status=domain_task.status,
@@ -308,9 +325,23 @@ def process_document_prediction_task(
         if session.in_transaction():
             session.rollback()
 
+        error_text = str(exc)
         _mark_task_as_failed(
             session,
             task_id=task_id,
-            error_message=str(exc),
+            error_message=error_text,
         )
+
+        if callback_url:
+            send_task_webhook(
+                url=callback_url,
+                task_id=task_id,
+                status=TaskStatus.FAILED,
+                model_name=model_name_for_webhook,
+                result_id=None,
+                spent_credits=Decimal("0"),
+                completed_at=datetime.now(UTC),
+                error_message=error_text,
+            )
+
         raise

@@ -123,6 +123,7 @@ def persist_task(
         status=task.status.value,
         spent_credits=task.spent_credits,
         target_schema=task.target_schema,
+        callback_url=task.callback_url,
         error_message=task.error_message,
         started_at=task.started_at,
         completed_at=task.finished_at,

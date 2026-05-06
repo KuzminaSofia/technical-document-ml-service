@@ -592,6 +592,7 @@ class DocumentExtractionTask(MLTask):
         error_message: str | None = None,
         spent_credits: Decimal = Decimal("0"),
         result_id: UUID | None = None,
+        callback_url: str | None = None,
     ) -> None:
         super().__init__(
             user_id=user_id,
@@ -607,6 +608,7 @@ class DocumentExtractionTask(MLTask):
         )
         self._documents: list[UploadedDocument] = documents
         self._target_schema: str = target_schema
+        self._callback_url: str | None = callback_url
 
     @property
     def documents(self) -> list[UploadedDocument]:
@@ -617,6 +619,11 @@ class DocumentExtractionTask(MLTask):
     def target_schema(self) -> str:
         """вернуть название целевой схемы извлечения"""
         return self._target_schema
+
+    @property
+    def callback_url(self) -> str | None:
+        """вернуть URL для webhook-уведомления о завершении задачи"""
+        return self._callback_url
 
     def get_valid_documents(self) -> list[UploadedDocument]:
         """вернуть только те документы, которые прошли базовую проверку формата"""
