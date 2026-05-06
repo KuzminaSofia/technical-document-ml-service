@@ -1,225 +1,181 @@
 {% extends "base.html" %}
 
-{% block content %}
+{% block body_class %}body-full-width{% endblock %}
+
+{% block page_container %}
 {% set first_document = task.documents[0] if task.documents else none %}
 {% set is_completed = task.status == "completed" %}
 {% set is_failed = task.status == "failed" %}
-{% set is_running = task.status not in ["completed", "failed"] %}
 
 <section
-    class="workspace-page"
+    class="forge-page task-result-page"
     data-task-auto-refresh="{{ 'true' if auto_refresh else 'false' }}"
 >
-    <div class="workspace-topbar card">
-        <div class="workspace-title-block">
-            <p class="eyebrow">Document processing workspace</p>
+    {% include "partials/sidebar.html" %}
 
-            <div class="workspace-title-row">
-                <h1>
-                    {% if first_document %}
-                        {{ first_document.original_filename }}
-                    {% else %}
-                        Request {{ task.id }}
-                    {% endif %}
-                </h1>
-
-                <span class="status-pill status-pill-{{ task.status }}">
-                    {{ task.status }}
-                </span>
-            </div>
-
-            <div class="workspace-subtitle">
-                <span>Request ID:</span>
-                <strong class="mono">{{ task.id }}</strong>
-            </div>
-        </div>
-
-        <div class="workspace-actions">
-            <a class="button button-secondary" href="{{ request.url_for('tasks_page') }}">
-                История запросов
-            </a>
-            <a class="button button-primary" href="{{ request.url_for('predict_page') }}">
-                Новый документ
-            </a>
-        </div>
-    </div>
-
-    {% if auto_refresh %}
-        <div class="alert alert-info">
-            Задача ещё обрабатывается. Страница будет автоматически обновляться каждые 5 секунд.
-        </div>
-    {% endif %}
-
-    {% if task.error_message %}
-        <div class="alert alert-error">
-            <strong>Ошибка обработки:</strong> {{ task.error_message }}
-        </div>
-    {% endif %}
-
-    {% if result_warning_message %}
-        <div class="alert alert-error">
-            {{ result_warning_message }}
-        </div>
-    {% endif %}
-
-    <div class="processing-stage-tabs card">
-        <div class="stage-tab stage-tab-active stage-tab-{{ task.status }}">
-            <div class="stage-tab-header">
-                <span class="stage-number">1</span>
-                <strong>Convert</strong>
-            </div>
-            <p>
-                Преобразование исходного документа в промежуточные артефакты:
-                Markdown, JSON, TXT и служебные файлы backend-обработки.
-            </p>
-        </div>
-
-        <div class="stage-tab stage-tab-disabled">
-            <div class="stage-tab-header">
-                <span class="stage-number">2</span>
-                <strong>Segment</strong>
-            </div>
-            <p>
-                Будущий этап логического разбиения документа на блоки,
-                разделы, страницы и чанки.
-            </p>
-        </div>
-
-        <div class="stage-tab stage-tab-disabled">
-            <div class="stage-tab-header">
-                <span class="stage-number">3</span>
-                <strong>Extract</strong>
-            </div>
-            <p>
-                Будущий этап извлечения структурированных данных,
-                сущностей и полей по заданной схеме.
-            </p>
-        </div>
-    </div>
-
-    <div class="workspace-split">
-        <aside class="source-preview-panel card">
-            <div class="panel-header">
-                <div>
-                    <p class="eyebrow">Source</p>
-                    <h2>Исходный документ</h2>
-                </div>
-            </div>
-
-            <div class="source-preview-placeholder">
-                <div class="placeholder-icon">PDF</div>
-                <h3>Preview будет подключён следующим шагом</h3>
-                <p class="muted">
-                    Здесь будет отображаться исходный PDF или изображение:
-                    слева оригинал, справа результат Convert.
-                </p>
-            </div>
-
-            <div class="source-documents-list">
-                <h3>Файлы запроса</h3>
-
-                {% if task.documents %}
-                    <div class="stack-list">
-                        {% for document in task.documents %}
-                            <div class="document-card compact-document-card">
-                                <div class="document-card-header">
-                                    <strong>{{ document.original_filename }}</strong>
-                                    <span class="status-pill status-pill-neutral">
-                                        {{ document.document_type }}
-                                    </span>
-                                </div>
-
-                                <dl class="compact-kv">
-                                    <div>
-                                        <dt>MIME type</dt>
-                                        <dd>{{ document.mime_type }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Размер</dt>
-                                        <dd>{{ document.size_bytes }} bytes</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Загружен</dt>
-                                        <dd>{{ document.uploaded_at }}</dd>
-                                    </div>
-                                </dl>
-                            </div>
-                        {% endfor %}
-                    </div>
+    <main class="forge-main">
+        <header class="forge-topbar">
+            <div class="forge-project-title">
+                {% if first_document %}
+                    {{ first_document.original_filename }}
                 {% else %}
-                    <p class="muted">Документы не найдены.</p>
+                    Request {{ task.id }}
                 {% endif %}
             </div>
-        </aside>
 
-        <section class="convert-result-panel card">
-            <div class="panel-header">
-                <div>
-                    <p class="eyebrow">Convert</p>
-                    <h2>Результат преобразования</h2>
+            <div class="forge-steps">
+                <span class="forge-step forge-step-active">Преобразование</span>
+                <!-- <span class="forge-step-arrow">→</span> -->
+                <!-- <span class="forge-step forge-step-locked">Segment</span>
+                <span class="forge-step-arrow">→</span>
+                <span class="forge-step forge-step-locked">Extract</span> -->
+            </div>
+
+            <a class="button button-secondary" href="{{ request.url_for('predict_page') }}">
+                Новая обработка
+            </a>
+        </header>
+
+        {% if auto_refresh %}
+            <div class="forge-alert-row">
+                <div class="alert alert-info">
+                    Задача ещё обрабатывается. Страница будет автоматически обновляться каждые 5 секунд.
+                </div>
+            </div>
+        {% endif %}
+
+        {% if task.error_message %}
+            <div class="forge-alert-row">
+                <div class="alert alert-error">
+                    <strong>Ошибка обработки:</strong> {{ task.error_message }}
+                </div>
+            </div>
+        {% endif %}
+
+        {% if result_warning_message %}
+            <div class="forge-alert-row">
+                <div class="alert alert-error">
+                    {{ result_warning_message }}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="datalab-result-layout">
+            <section class="markdown-document-panel">
+                <div class="document-toolbar">
+                    <button type="button" class="button button-secondary" disabled>Назад</button>
+                    <span>Страница 0</span>
+                    <button type="button" class="button button-secondary" disabled>Вперед</button>
+                    <button type="button" class="button button-secondary" disabled>Миниатюры</button>
                 </div>
 
-                <span class="status-pill status-pill-{{ task.status }}">
-                    {{ task.status }}
-                </span>
-            </div>
+                <div class="markdown-paper">
+                    {% if markdown_content %}
+                        <div class="markdown-paper-header">
+                            <span class="status-pill status-pill-completed">Markdown</span>
+                            {% if markdown_artifact %}
+                                <strong>{{ markdown_artifact.name }}</strong>
+                            {% endif %}
+                        </div>
 
-            <div class="result-format-tabs">
-                <button type="button" class="format-tab format-tab-active">
-                    Markdown
-                </button>
-                <button type="button" class="format-tab" disabled>
-                    Blocks
-                </button>
-                <button type="button" class="format-tab" disabled>
-                    HTML
-                </button>
-                <button type="button" class="format-tab">
-                    Artifacts
-                </button>
-                <button type="button" class="format-tab">
-                    Raw JSON
-                </button>
-            </div>
+                        <pre class="markdown-preview">{{ markdown_content }}</pre>
 
-            <div class="convert-content-area">
-                <article class="convert-view-section">
-                    <div class="convert-view-header">
-                        <h3>Markdown</h3>
-                        <span class="status-pill status-pill-neutral">planned viewer</span>
-                    </div>
-
-                    {% if is_completed %}
-                        <div class="markdown-placeholder">
-                            <h4>Markdown-результат готов к подключению</h4>
+                        {% if markdown_artifact and markdown_artifact.is_truncated %}
+                            <div class="alert alert-info">
+                                Markdown был обрезан для безопасного отображения в браузере.
+                            </div>
+                        {% endif %}
+                    {% elif is_completed %}
+                        <div class="source-preview-placeholder">
+                            <div class="placeholder-icon">MD</div>
+                            <h3>Markdown-артефакт не найден</h3>
                             <p class="muted">
-                                На следующем шаге мы прочитаем <code>.md</code>-артефакт из manifest
-                                и отобразим его содержимое в этом блоке.
+                                Задача завершена, но среди артефактов результата не удалось найти файл
+                                <code>.md</code>.
                             </p>
                         </div>
                     {% elif is_failed %}
-                        <div class="markdown-placeholder markdown-placeholder-error">
-                            <h4>Convert завершился с ошибкой</h4>
+                        <div class="source-preview-placeholder">
+                            <div class="placeholder-icon">ERR</div>
+                            <h3>Convert завершился с ошибкой</h3>
                             <p class="muted">
                                 Markdown не был сформирован из-за ошибки обработки.
                             </p>
                         </div>
                     {% else %}
-                        <div class="markdown-placeholder">
-                            <h4>Документ обрабатывается</h4>
-                            <p class="muted">
-                                Markdown появится после завершения этапа Convert.
-                            </p>
+                        <div class="processing-preview-card processing-preview-centered">
+                            <div class="processing-step processing-step-done">
+                                <span></span>
+                                <strong>Загрузка документа</strong>
+                            </div>
+                            <div class="processing-step">
+                                <span></span>
+                                <strong>Обработка документа</strong>
+                            </div>
+                            <div class="processing-step processing-step-muted">
+                                <span></span>
+                                <strong>Формирование Markdown</strong>
+                            </div>
+                            <div class="processing-step processing-step-muted">
+                                <span></span>
+                                <strong>Обработка завершена</strong>
+                            </div>
                         </div>
                     {% endif %}
+                </div>
+            </section>
+
+            <aside class="result-side-panel">
+                <div class="result-top-tabs">
+                    <button type="button" class="result-top-tab">Настройки</button>
+                    <button type="button" class="result-top-tab result-top-tab-active">Результат</button>
+                </div>
+
+                <div class="result-format-tabs">
+                    <button type="button" class="format-tab format-tab-active">Markdown</button>
+                    <button type="button" class="format-tab" disabled>Блоки</button>
+                    <button type="button" class="format-tab">JSON</button>
+                    <button type="button" class="format-tab">Артефакты</button>
+                </div>
+
+                <article class="result-card result-accent-card">
+                    <div class="result-card-header">
+                        <span class="status-pill status-pill-{{ task.status }}">{{ task.status }}</span>
+                        <strong>Результат преобразования</strong>
+                    </div>
+
+                    <dl class="compact-kv">
+                        <div>
+                            <dt>Модель</dt>
+                            <dd>{{ task.model_name }}</dd>
+                        </div>
+                        <div>
+                            <dt>Backend</dt>
+                            <dd>{{ task.backend_name }}</dd>
+                        </div>
+                        <div>
+                            <dt>Схема извлечения</dt>
+                            <dd>{{ task.target_schema or "—" }}</dd>
+                        </div>
+                        <div>
+                            <dt>Стоимость</dt>
+                            <dd>{{ task.spent_credits or "0.00" }}</dd>
+                        </div>
+                        <div>
+                            <dt>Создано</dt>
+                            <dd>{{ task.created_at or "—" }}</dd>
+                        </div>
+                        <div>
+                            <dt>Завершено</dt>
+                            <dd>{{ task.completed_at or "—" }}</dd>
+                        </div>
+                    </dl>
                 </article>
 
-                <article class="convert-view-section">
-                    <div class="convert-view-header">
-                        <h3>Artifacts</h3>
-                        <span class="status-pill status-pill-neutral">
-                            {{ artifacts | length }}
-                        </span>
+                <article class="result-card">
+                    <div class="result-card-header">
+                        <strong>Артефакты</strong>
+                        <span class="status-pill status-pill-neutral">{{ artifacts | length }}</span>
                     </div>
 
                     {% if artifacts %}
@@ -235,21 +191,14 @@
 
                                     <dl class="compact-kv">
                                         <div>
-                                            <dt>MIME type</dt>
+                                            <dt>MIME-тип</dt>
                                             <dd>{{ artifact.mime_type or "—" }}</dd>
                                         </div>
                                         <div>
-                                            <dt>Description</dt>
+                                            <dt>Описание</dt>
                                             <dd>{{ artifact.description or "—" }}</dd>
                                         </div>
                                     </dl>
-
-                                    {% if artifact.metadata %}
-                                        <details class="details-block">
-                                            <summary>Metadata</summary>
-                                            <pre class="json-block">{{ artifact.metadata | pretty_json }}</pre>
-                                        </details>
-                                    {% endif %}
                                 </div>
                             {% endfor %}
                         </div>
@@ -258,100 +207,58 @@
                     {% endif %}
                 </article>
 
-                <article class="convert-view-section">
-                    <div class="convert-view-header">
-                        <h3>Raw JSON</h3>
-                        <span class="status-pill status-pill-neutral">
-                            backend result
-                        </span>
+                <article class="result-card">
+                    <div class="result-card-header">
+                        <strong>JSON результата</strong>
+                        <span class="status-pill status-pill-neutral">результат backend</span>
                     </div>
 
                     {% if result and result.extracted_data %}
                         <pre class="json-block">{{ result.extracted_data | pretty_json }}</pre>
                     {% else %}
-                        <p class="muted">
-                            Служебные данные результата пока отсутствуют.
-                        </p>
+                        <p class="muted">Служебные данные результата пока отсутствуют.</p>
                     {% endif %}
                 </article>
-            </div>
-        </section>
-    </div>
 
-    <div class="workspace-details-grid">
-        <article class="card">
-            <h2>Request metadata</h2>
-            <dl class="kv-list">
-                <div>
-                    <dt>Request ID</dt>
-                    <dd class="mono">{{ task.id }}</dd>
-                </div>
-                <div>
-                    <dt>Model</dt>
-                    <dd>{{ task.model_name }}</dd>
-                </div>
-                <div>
-                    <dt>Backend</dt>
-                    <dd>{{ task.backend_name }}</dd>
-                </div>
-                <div>
-                    <dt>Target schema</dt>
-                    <dd>{{ task.target_schema or "—" }}</dd>
-                </div>
-                <div>
-                    <dt>Created</dt>
-                    <dd>{{ task.created_at or "—" }}</dd>
-                </div>
-                <div>
-                    <dt>Started</dt>
-                    <dd>{{ task.started_at or "—" }}</dd>
-                </div>
-                <div>
-                    <dt>Completed</dt>
-                    <dd>{{ task.completed_at or "—" }}</dd>
-                </div>
-                <div>
-                    <dt>Cost</dt>
-                    <dd>{{ task.spent_credits or "0.00" }}</dd>
-                </div>
-            </dl>
-        </article>
+                <article class="result-card">
+                    <div class="result-card-header">
+                        <strong>Замечания валидации</strong>
+                    </div>
 
-        <article class="card">
-            <h2>Validation issues</h2>
-
-            {% if result and result.validation_issues %}
-                <div class="table-wrapper">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Поле</th>
-                                <th>Сообщение</th>
-                                <th>Значение</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for issue in result.validation_issues %}
-                                <tr>
-                                    <td>{{ issue.field_name }}</td>
-                                    <td>{{ issue.message }}</td>
-                                    <td class="mono">
-                                        {% if issue.raw_value is not none %}
-                                            {{ issue.raw_value }}
-                                        {% else %}
-                                            —
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            {% else %}
-                <p class="muted">Замечаний валидации нет.</p>
-            {% endif %}
-        </article>
-    </div>
+                    {% if result and result.validation_issues %}
+                        <div class="table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Поле</th>
+                                        <th>Сообщение</th>
+                                        <th>Значение</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for issue in result.validation_issues %}
+                                        <tr>
+                                            <td>{{ issue.field_name }}</td>
+                                            <td>{{ issue.message }}</td>
+                                            <td class="mono">
+                                                {% if issue.raw_value is not none %}
+                                                    {{ issue.raw_value }}
+                                                {% else %}
+                                                    —
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="muted">Замечаний валидации нет.</p>
+                    {% endif %}
+                </article>
+            </aside>
+        </div>
+    </main>
 </section>
 
 <script src="{{ request.url_for('static', path='js/task_polling.js') }}"></script>

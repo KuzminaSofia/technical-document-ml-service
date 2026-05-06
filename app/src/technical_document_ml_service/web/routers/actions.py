@@ -40,6 +40,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["web-actions"])
 
 
+def _forge_page_context(active_page: str | None = None) -> dict:
+    """общий layout-контекст для авторизованных страниц с левым sidebar"""
+    return {
+        "body_class": "body-full-width",
+        "page_content_class": "page-content-full-width",
+        "hide_site_header": True,
+        "active_page": active_page,
+    }
+
+
 def _build_access_token(user_id: UUID, email: str) -> tuple[str, int]:
     """создать access token и вернуть его вместе со сроком жизни в секундах"""
     expires_delta = timedelta(minutes=get_jwt_expire_minutes())
@@ -205,6 +215,7 @@ def top_up_action(
             error_message="Введите корректную положительную сумму пополнения.",
             form_data={"amount": amount},
             status_code=400,
+            **_forge_page_context(None),
         )
 
     try:
@@ -224,6 +235,7 @@ def top_up_action(
             error_message="Не удалось пополнить баланс. Попробуйте ещё раз.",
             form_data={"amount": amount},
             status_code=500,
+            **_forge_page_context(None),
         )
 
     return RedirectResponse(url="/balance-ui?success=topup", status_code=303)
@@ -250,7 +262,7 @@ def predict_submit_action(
         return render_template(
             request,
             "predict.html",
-            page_title="Новая ML-задача",
+            page_title="Новая обработка",
             current_user=current_user,
             models=models,
             error_message="Нужно загрузить хотя бы один документ.",
@@ -259,6 +271,7 @@ def predict_submit_action(
                 "target_schema": target_schema,
             },
             status_code=400,
+            **_forge_page_context("predict"),
         )
 
     incoming_documents: list[IncomingDocumentData] = []
@@ -290,7 +303,7 @@ def predict_submit_action(
         return render_template(
             request,
             "predict.html",
-            page_title="Новая ML-задача",
+            page_title="Новая обработка",
             current_user=current_user,
             models=models,
             error_message=(
@@ -302,6 +315,7 @@ def predict_submit_action(
                 "target_schema": target_schema,
             },
             status_code=400,
+            **_forge_page_context("predict"),
         )
 
     return RedirectResponse(
