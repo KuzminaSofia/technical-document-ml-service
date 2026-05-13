@@ -61,12 +61,22 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+    container_name: technical-document-frontend
+    environment:
+      INTERNAL_API_URL: http://app:8000
+    depends_on:
+      - app
+
   web-proxy:
     build:
       context: ./web-proxy
     container_name: technical-document-web-proxy
     depends_on:
       - app
+      - frontend
     ports:
       - "80:80"
       - "443:443"

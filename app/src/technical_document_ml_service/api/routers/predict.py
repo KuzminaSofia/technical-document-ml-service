@@ -4,10 +4,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, UploadFile, status
 
-from technical_document_ml_service.api.deps import CurrentUserDep, SessionDep
-from technical_document_ml_service.api.schemas.predict import PredictAcceptedResponse
+from technical_document_ml_service.api.deps import CurrentReadUserDep, CurrentUserDep, ReadSessionDep, SessionDep
+from technical_document_ml_service.api.schemas.predict import MLModelResponse, PredictAcceptedResponse
 from technical_document_ml_service.core.config import app_settings
 from technical_document_ml_service.domain.exceptions import FileSizeLimitError
+from technical_document_ml_service.services.model_query_service import get_active_models
 from technical_document_ml_service.services.document_storage_service import (
     IncomingDocumentData,
 )
@@ -17,6 +18,16 @@ from technical_document_ml_service.services.prediction_submission_service import
 
 
 router = APIRouter(prefix="/predict", tags=["predict"])
+
+
+@router.get("/models", response_model=list[MLModelResponse])
+def get_prediction_models(
+    session: ReadSessionDep,
+    current_user: CurrentReadUserDep,
+) -> list[MLModelResponse]:
+    """получить список активных ML-моделей, доступных для обработки"""
+    models = get_active_models(session)
+    return [MLModelResponse(**m) for m in models]
 
 
 @router.post(

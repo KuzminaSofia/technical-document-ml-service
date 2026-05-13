@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 from technical_document_ml_service.api.deps import CurrentReadUserDep, ReadSessionDep
 from technical_document_ml_service.api.schemas.tasks import (
@@ -13,6 +14,7 @@ from technical_document_ml_service.api.schemas.tasks import (
     TaskResultResponse,
     TasksListResponse,
 )
+from technical_document_ml_service.services.artifact_service import resolve_artifact_path
 from technical_document_ml_service.services.task_query_service import (
     get_user_task_details,
     get_user_task_result,
@@ -77,3 +79,33 @@ def get_task_result(
         task_id=task_id,
     )
     return TaskResultResponse.from_bundle(bundle)
+
+
+@router.get("/{task_id}/artifacts/{artifact_name}")
+def download_task_artifact(
+    task_id: UUID,
+    artifact_name: str,
+    session: ReadSessionDep,
+    current_user: CurrentReadUserDep,
+) -> FileResponse:
+    """скачать артефакт задачи"""
+    bundle = get_user_task_result(session, user_id=current_user.id, task_id=task_id)
+    resp = TaskResultResponse.from_bundle(bundle)
+
+    artifact = next((a for a in resp.artifacts if a.name == artifact_name), None)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="Артефакт не найден")
+
+    artifacts_dir = resp.result.artifacts_dir if resp.result else None
+    file_path = resolve_artifact_path(
+        {"path": artifact.path},
+        artifacts_dir=artifacts_dir,
+    )
+    if file_path is None:
+        raise HTTPException(status_code=404, detail="Файл артефакта недоступен")
+
+    return FileResponse(
+        str(file_path),
+        filename=artifact_name,
+        media_type=artifact.mime_type or "application/octet-stream",
+    )
