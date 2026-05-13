@@ -7,8 +7,11 @@ from technical_document_ml_service.domain.exceptions import FileSizeLimitError
 from technical_document_ml_service.services.document_storage_service import IncomingDocumentData
 
 
+_READ_CHUNK_BYTES = 64 * 1024  # 64 КБ — прекращаем чтение сразу при превышении лимита
+
+
 def collect_uploaded_documents(uploads: list[UploadFile]) -> list[IncomingDocumentData]:
-    """читать загруженные файлы и проверить лимиты размера"""
+    """читать загруженные файлы чанками и проверить лимиты размера"""
     max_file_bytes = app_settings.max_upload_file_size_mb * 1024 * 1024
     max_total_bytes = app_settings.max_task_total_size_mb * 1024 * 1024
 
@@ -17,17 +20,22 @@ def collect_uploaded_documents(uploads: list[UploadFile]) -> list[IncomingDocume
 
     try:
         for upload in uploads:
-            content = upload.file.read()
-            file_size = len(content)
+            chunks: list[bytes] = []
+            file_bytes = 0
 
-            if file_size > max_file_bytes:
-                raise FileSizeLimitError(
-                    f"Файл '{upload.filename}' превышает допустимый размер "
-                    f"{app_settings.max_upload_file_size_mb} МБ "
-                    f"(получено {file_size / 1024 / 1024:.1f} МБ)."
-                )
+            while True:
+                chunk = upload.file.read(_READ_CHUNK_BYTES)
+                if not chunk:
+                    break
+                file_bytes += len(chunk)
+                if file_bytes > max_file_bytes:
+                    raise FileSizeLimitError(
+                        f"Файл '{upload.filename}' превышает допустимый размер "
+                        f"{app_settings.max_upload_file_size_mb} МБ."
+                    )
+                chunks.append(chunk)
 
-            total_bytes += file_size
+            total_bytes += file_bytes
             if total_bytes > max_total_bytes:
                 raise FileSizeLimitError(
                     f"Суммарный размер файлов задачи превышает "
@@ -38,7 +46,7 @@ def collect_uploaded_documents(uploads: list[UploadFile]) -> list[IncomingDocume
                 IncomingDocumentData(
                     filename=upload.filename or "document",
                     content_type=upload.content_type,
-                    content=content,
+                    content=b"".join(chunks),
                 )
             )
     finally:

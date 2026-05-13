@@ -85,9 +85,10 @@ services:
     image: rabbitmq:3-management
     container_name: technical-document-rabbitmq
     restart: on-failure
+    expose:
+      - "5672"
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:15672:15672"
     volumes:
       - ./storage/rabbitmq:/var/lib/rabbitmq
     healthcheck:
