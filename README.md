@@ -194,7 +194,7 @@ docker compose ps
 ### 5. Проверить healthcheck приложения
 
 ```bash
-curl http://localhost/health
+curl https://localhost/health --insecure
 ```
 
 Ожидаемый ответ:
@@ -210,10 +210,10 @@ curl http://localhost/health
 
 | Интерфейс | URL | Назначение |
 |---|---|---|
-| Web UI (Next.js) | `http://localhost/` | Личный кабинет пользователя |
-| Swagger UI | `http://localhost/docs` | Документация и ручная проверка REST API |
+| Web UI (Next.js) | `https://localhost/` | Личный кабинет пользователя |
+| Swagger UI | `https://localhost/docs` | Документация и ручная проверка REST API |
 | RabbitMQ UI | `http://localhost:15672` | Просмотр очередей и сообщений RabbitMQ |
-| Healthcheck | `http://localhost/health` | Проверка работоспособности приложения |
+| Healthcheck | `https://localhost/health` | Проверка работоспособности приложения |
 
 Доступ к RabbitMQ UI по умолчанию:
 
@@ -227,7 +227,10 @@ password: guest
 ## Web UI
 
 Web-интерфейс доступен по адресу:
-`http://localhost/`
+`https://localhost/`
+
+Nginx работает на HTTPS с самоподписным сертификатом (генерируется автоматически при первом запуске).
+При первом открытии браузер покажет предупреждение — нужно нажать «Дополнительно» → «Перейти на localhost».
 
 Для браузерного интерфейса используется JWT-аутентификация через `HttpOnly cookie`
 
@@ -236,7 +239,7 @@ Web-интерфейс доступен по адресу:
 ## REST API
 
 REST API доступен через Swagger UI:
-`http://localhost/docs`
+`https://localhost/docs`
 
 Основные группы эндпоинтов:
 - `/auth/register` — регистрация пользователя;
@@ -385,7 +388,9 @@ docker compose up -d --build
 ```
 
 2. Открыть Web UI:
-`http://localhost/`
+`https://localhost/`
+
+   При первом открытии браузер покажет предупреждение о самоподписном сертификате — нажать «Дополнительно» → «Перейти на localhost»
 
 3. Зарегистрировать нового пользователя
 4. Войти в личный кабинет
@@ -402,5 +407,5 @@ docker compose up -d --build
     - транзакция списания средств
 
 Дополнительно можно открыть RabbitMQ UI и убедиться, что задачи проходят через очередь:
-`http://localhost:15672`
+`http://localhost:15672` (RabbitMQ UI работает на HTTP — без HTTPS)
 
