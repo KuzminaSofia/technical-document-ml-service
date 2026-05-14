@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { clientFetch, clientFetchText } from "@/lib/api/client";
+import { useTaskSSE } from "@/hooks/useTaskSSE";
 import { formatDateTime } from "@/lib/format";
 import { TaskStatusBadge } from "@/components/tasks/TaskStatusBadge";
 import { cn } from "@/lib/utils";
-import type { TaskResultResponse, TaskStatus, TaskStatusResponse, ValidationIssueResponse } from "@/lib/api/types";
+import type { TaskResultResponse, TaskStatus, ValidationIssueResponse } from "@/lib/api/types";
 
 const TERMINAL_STATUSES: TaskStatus[] = ["completed", "failed"];
-const POLL_INTERVAL_MS = 3000;
 
 const PROCESSING_STEPS: { status: TaskStatus; label: string }[] = [
   { status: "created", label: "Задача создана" },
@@ -44,44 +44,25 @@ export function TaskDetailClient({ taskId, initial }: Props) {
   const status = data.task.status;
   const isTerminal = TERMINAL_STATUSES.includes(status);
 
-  // polling — лёгкий /status endpoint вместо тяжёлого /result
-  // При достижении terminal-статуса делаем одиночный fetch полного результата
-  useEffect(() => {
-    if (isTerminal) return;
-
-    const controller = new AbortController();
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    async function poll() {
-      try {
-        const statusData = await clientFetch<TaskStatusResponse>(`/tasks/${taskId}/status`, {
-          signal: controller.signal,
-        });
-
-        if (TERMINAL_STATUSES.includes(statusData.status)) {
-          const full = await clientFetch<TaskResultResponse>(`/tasks/${taskId}/result`, {
-            signal: controller.signal,
-          });
-          setData(full);
-        } else {
-          setData((prev) => ({
-            ...prev,
-            task: { ...prev.task, ...statusData },
-          }));
-          timeoutId = setTimeout(poll, POLL_INTERVAL_MS);
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return;
-        timeoutId = setTimeout(poll, POLL_INTERVAL_MS);
-      }
-    }
-
-    timeoutId = setTimeout(poll, POLL_INTERVAL_MS);
-    return () => {
-      controller.abort();
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [taskId, isTerminal]);
+  // SSE-стрим статуса — бэкенд пушит изменения, поллинга нет.
+  // При терминальном статусе делаем одиночный fetch полного результата.
+  useTaskSSE(taskId, !isTerminal, {
+    onStatus: (statusData) => {
+      setData((prev) => ({
+        ...prev,
+        task: { ...prev.task, ...statusData },
+      }));
+    },
+    onDone: (statusData) => {
+      setData((prev) => ({
+        ...prev,
+        task: { ...prev.task, ...statusData },
+      }));
+      clientFetch<TaskResultResponse>(`/tasks/${taskId}/result`)
+        .then(setData)
+        .catch(() => {});
+    },
+  });
 
   // fetch markdown preview when completed
   useEffect(() => {

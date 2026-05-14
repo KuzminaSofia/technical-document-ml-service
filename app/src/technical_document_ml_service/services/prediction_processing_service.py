@@ -98,6 +98,17 @@ def _build_skipped_result(
     )
 
 
+def _persist_status_transition(
+    session: Session,
+    *,
+    task_orm: MLTaskORM,
+    domain_task: DocumentExtractionTask,
+) -> None:
+    """зафиксировать промежуточный статус задачи в БД без сохранения финального результата"""
+    sync_task_orm_from_domain(task_orm, domain_task)
+    session.commit()
+
+
 def _mark_task_as_failed(
     session: Session,
     *,
@@ -147,7 +158,7 @@ def _run_ml_backend(
     model_backend_config: dict,
     model_kind: str,
 ):
-    """выбрать backend, запустить ML-обработку, вернуть (backend_selection, backend_request, backend_result)"""
+    """выбрать backend и запустить ML-обработку"""
     backend_request = build_backend_request(
         task=domain_task,
         model_id=domain_model.id,
@@ -161,7 +172,6 @@ def _run_ml_backend(
         backend_config=model_backend_config,
     )
 
-    domain_task.mark_as_processing()
     backend_result = backend_selection.backend.process(backend_request)
 
     for warning in backend_result.warnings:
@@ -181,7 +191,6 @@ def _persist_completion(
     task_orm: MLTaskORM,
     domain_task: DocumentExtractionTask,
     domain_user,
-    domain_model,
     result,
     debit_transaction,
 ) -> None:
@@ -215,10 +224,15 @@ def _execute_prediction(
     )
 
     domain_task.mark_as_validating()
+    _persist_status_transition(session, task_orm=task_orm, domain_task=domain_task)
+
     validation_issues = domain_task.validate_input()
 
     if not domain_task.get_valid_documents():
         raise TaskExecutionError("Нет валидных документов для обработки.")
+
+    domain_task.mark_as_processing()
+    _persist_status_transition(session, task_orm=task_orm, domain_task=domain_task)
 
     backend_selection, backend_request, backend_result = _run_ml_backend(
         domain_task=domain_task,
@@ -252,7 +266,6 @@ def _execute_prediction(
         task_orm=task_orm,
         domain_task=domain_task,
         domain_user=domain_user,
-        domain_model=domain_model,
         result=result,
         debit_transaction=debit_transaction,
     )
