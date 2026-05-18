@@ -6,15 +6,14 @@ from unittest.mock import call, patch
 from technical_document_ml_service.db.models import MLTaskORM
 from technical_document_ml_service.db.session import SessionLocal
 from technical_document_ml_service.domain.enums import TaskStatus
-from technical_document_ml_service.services.document_storage_service import (
-    IncomingDocumentData,
-)
 from technical_document_ml_service.services.prediction_processing_service import (
     process_document_prediction_task,
 )
 from technical_document_ml_service.services.prediction_submission_service import (
     submit_document_prediction,
 )
+
+from helpers import make_incoming_document
 
 
 def _submit(api_user, api_model, *, callback_url: str | None = None):
@@ -24,13 +23,7 @@ def _submit(api_user, api_model, *, callback_url: str | None = None):
             user_id=api_user.id,
             model_name=api_model.name,
             target_schema="passport_fields",
-            documents=[
-                IncomingDocumentData(
-                    filename="sample.pdf",
-                    content_type="application/pdf",
-                    content=b"%PDF-1.4 test content",
-                )
-            ],
+            documents=[make_incoming_document()],
             callback_url=callback_url,
         )
 
