@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
+from typing import Any
 
 import pika
 
@@ -67,7 +69,12 @@ def _handle_message(
     _properties: pika.BasicProperties,
     body: bytes,
 ) -> None:
-    """обработать одно сообщение из очереди"""
+    """обработать одно сообщение из очереди
+
+    ML-инференс запускается в отдельном потоке, чтобы главный поток мог
+    продолжать качать heartbeat RabbitMQ. Иначе BlockingConnection теряет
+    соединение при задачах длиннее 2×heartbeat (≈120 с).
+    """
     delivery_tag = method.delivery_tag
 
     try:
@@ -81,65 +88,79 @@ def _handle_message(
         _reject_message(channel, delivery_tag, requeue=False)
         return
 
-    session = None
+    outcome: dict[str, Any] = {}
 
-    try:
+    def _run_in_thread() -> None:
         session = SessionLocal()
+        try:
+            result = process_document_prediction_task(
+                session,
+                task_id=message.task_id,
+                redelivered=method.redelivered,
+            )
+            LOGGER.info(
+                "worker_id=%s | task_id=%s | status=%s | was_processed=%s | message=%s",
+                worker_id,
+                result.task_id,
+                result.status.value,
+                result.was_processed,
+                result.message,
+            )
+            outcome["ok"] = result
+        except NotFoundError as exc:
+            LOGGER.error(
+                "worker_id=%s | task_id=%s | Задача не найдена: %s",
+                worker_id,
+                message.task_id,
+                exc,
+            )
+            session.rollback()
+            outcome["not_found"] = True
+        except Exception as exc:
+            LOGGER.exception(
+                "worker_id=%s | task_id=%s | Ошибка обработки задачи: %s",
+                worker_id,
+                message.task_id,
+                exc,
+            )
+            session.rollback()
+            outcome["error"] = True
+        finally:
+            session.close()
 
-        result = process_document_prediction_task(
-            session,
-            task_id=message.task_id,
-        )
+    thread = threading.Thread(target=_run_in_thread, daemon=True)
+    thread.start()
 
-        LOGGER.info(
-            "worker_id=%s | task_id=%s | status=%s | was_processed=%s | message=%s",
-            worker_id,
-            result.task_id,
-            result.status.value,
-            result.was_processed,
-            result.message,
-        )
+    # Пока поток работает — качаем heartbeat, чтобы не потерять соединение
+    try:
+        while thread.is_alive():
+            channel.connection.process_data_events(time_limit=1)
+    except Exception:
+        thread.join()
+        raise
+
+    thread.join()
+
+    # Ack/nack вызываем из главного потока — канал жив, heartbeat поддержан
+    if "ok" in outcome:
         _ack_message(channel, delivery_tag)
-
-    except NotFoundError as exc:
+    elif "not_found" in outcome:
+        _reject_message(channel, delivery_tag, requeue=False)
+    elif method.redelivered:
         LOGGER.error(
-            "worker_id=%s | task_id=%s | Задача не найдена: %s",
+            "worker_id=%s | task_id=%s | Повторная обработка снова завершилась ошибкой. "
+            "Сообщение будет отклонено без requeue, чтобы избежать бесконечного цикла.",
             worker_id,
             message.task_id,
-            exc,
         )
         _reject_message(channel, delivery_tag, requeue=False)
-
-    except Exception as exc:
-        LOGGER.exception(
-            "worker_id=%s | task_id=%s | Ошибка обработки задачи: %s",
+    else:
+        LOGGER.info(
+            "worker_id=%s | task_id=%s | Сообщение будет возвращено в очередь для повторной попытки.",
             worker_id,
             message.task_id,
-            exc,
         )
-
-        if session is not None and session.in_transaction():
-            session.rollback()
-
-        if method.redelivered:
-            LOGGER.error(
-                "worker_id=%s | task_id=%s | Повторная обработка снова завершилась ошибкой. "
-                "Сообщение будет отклонено без requeue, чтобы избежать бесконечного цикла.",
-                worker_id,
-                message.task_id,
-            )
-            _reject_message(channel, delivery_tag, requeue=False)
-        else:
-            LOGGER.info(
-                "worker_id=%s | task_id=%s | Сообщение будет возвращено в очередь для повторной попытки.",
-                worker_id,
-                message.task_id,
-            )
-            _reject_message(channel, delivery_tag, requeue=True)
-
-    finally:
-        if session is not None:
-            session.close()
+        _reject_message(channel, delivery_tag, requeue=True)
 
 
 def _build_message_handler(

@@ -126,12 +126,19 @@ def _mark_task_as_failed(
     session.commit()
 
 
-_SKIP_STATUS_MESSAGES: dict[TaskStatus, str] = {
+_SAFE_SKIP_STATUSES: frozenset[TaskStatus] = frozenset(
+    {TaskStatus.COMPLETED, TaskStatus.FAILED}
+)
+_SAFE_SKIP_MESSAGES: dict[TaskStatus, str] = {
     TaskStatus.COMPLETED: "Задача уже была успешно обработана ранее.",
-    TaskStatus.PROCESSING: "Задача уже находится в обработке.",
-    TaskStatus.VALIDATING: "Задача уже находится на этапе валидации.",
     TaskStatus.FAILED: "Задача ранее завершилась с ошибкой.",
 }
+
+# Задача застряла в промежуточном статусе — воркер упал в процессе обработки.
+# При повторной доставке (redelivered=True) помечаем как FAILED вместо тихого skip+ack.
+_ZOMBIE_STATUSES: frozenset[TaskStatus] = frozenset(
+    {TaskStatus.PROCESSING, TaskStatus.VALIDATING}
+)
 
 
 def _ensure_processing_can_start(
@@ -289,6 +296,7 @@ def process_document_prediction_task(
     session: Session,
     *,
     task_id: UUID,
+    redelivered: bool = False,
 ) -> PredictionProcessingResult:
     """обработать ранее поставленную в очередь задачу"""
     task_orm = _load_task_for_processing(session, task_id)
@@ -304,8 +312,47 @@ def process_document_prediction_task(
 
     current_status = TaskStatus(task_orm.status)
 
-    if current_status in _SKIP_STATUS_MESSAGES:
-        return _build_skipped_result(task_orm, message=_SKIP_STATUS_MESSAGES[current_status])
+    if current_status in _SAFE_SKIP_STATUSES:
+        return _build_skipped_result(task_orm, message=_SAFE_SKIP_MESSAGES[current_status])
+
+    if current_status in _ZOMBIE_STATUSES:
+        if redelivered:
+            error_msg = (
+                f"Задача застряла в статусе '{current_status.value}': "
+                "воркер завершился в процессе обработки."
+            )
+            domain_task = task_orm_to_domain(task_orm)
+            domain_task.fail(error_msg)
+            sync_task_orm_from_domain(task_orm, domain_task)
+            session.commit()
+
+            if callback_url:
+                send_task_webhook(
+                    url=callback_url,
+                    task_id=task_id,
+                    status=TaskStatus.FAILED,
+                    model_name=model_name_for_webhook,
+                    result_id=None,
+                    spent_credits=Decimal("0"),
+                    completed_at=domain_task.finished_at,
+                    error_message=error_msg,
+                )
+
+            return PredictionProcessingResult(
+                task_id=domain_task.id,
+                status=domain_task.status,
+                result_id=None,
+                created_at=domain_task.created_at,
+                completed_at=domain_task.finished_at,
+                spent_credits=domain_task.spent_credits,
+                was_processed=False,
+                message=error_msg,
+            )
+        else:
+            return _build_skipped_result(
+                task_orm,
+                message=f"Задача уже находится в обработке (статус: {current_status.value}).",
+            )
 
     if current_status != TaskStatus.QUEUED:
         return _build_skipped_result(
