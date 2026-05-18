@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import UUID
@@ -28,6 +29,8 @@ from technical_document_ml_service.services.task_query_service import (
     get_user_tasks,
     get_user_task_status,
 )
+
+LOGGER = logging.getLogger("technical_document_ml_service.api.tasks")
 
 _TERMINAL_STATUSES = frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED})
 _SSE_POLL_INTERVAL_SECONDS = 5.0
@@ -142,6 +145,11 @@ async def stream_task_status(
                 yield f"event: stream_error\ndata: {payload}\n\n"
                 break
             except Exception:
+                LOGGER.exception(
+                    "task_id=%s | user_id=%s | Неожиданная ошибка в SSE-генераторе, стрим закрыт",
+                    task_id,
+                    user_id,
+                )
                 break
 
             is_terminal = item.status in _TERMINAL_STATUSES
