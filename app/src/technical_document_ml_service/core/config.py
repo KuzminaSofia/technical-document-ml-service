@@ -40,6 +40,8 @@ class AppSettings:
     worker_reconnect_delay_seconds: int
     worker_task_timeout_seconds: int
 
+    outbox_poll_interval_seconds: int
+
 
 def load_app_settings() -> AppSettings:
     """загрузить настройки приложения из переменных окружения"""
@@ -73,6 +75,7 @@ def load_app_settings() -> AppSettings:
         worker_id=os.getenv("WORKER_ID", "worker-unknown"),
         worker_reconnect_delay_seconds=int(os.getenv("WORKER_RECONNECT_DELAY_SECONDS", "5")),
         worker_task_timeout_seconds=int(os.getenv("WORKER_TASK_TIMEOUT_SECONDS", "600")),
+        outbox_poll_interval_seconds=int(os.getenv("APP_OUTBOX_POLL_INTERVAL_SECONDS", "60")),
     )
 
 
