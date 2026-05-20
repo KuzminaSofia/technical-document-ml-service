@@ -15,19 +15,13 @@ from technical_document_ml_service.inference.registry import (
     TECHNICAL_DOCUMENT_MODEL_KIND,
 )
 
-from technical_document_ml_service.db.base import Base
 from technical_document_ml_service.db.models import MLModelORM, UserORM
-from technical_document_ml_service.db.session import SessionLocal, engine
+from technical_document_ml_service.db.session import SessionLocal
 
 
 def _is_pbkdf2_hash(password_hash: str) -> bool:
     """проверить, что хеш уже в правильном формате pbkdf2_sha256$..."""
     return password_hash.startswith(f"{PASSWORD_SCHEME_PBKDF2_SHA256}$")
-
-
-def create_tables() -> None:
-    """создает все таблицы, зарегистрированные в metadata"""
-    Base.metadata.create_all(bind=engine)
 
 
 def _ensure_user(
@@ -132,12 +126,6 @@ def seed_initial_data(session: Session) -> None:
     )
 
 
-def init_db() -> None:
-    """создает таблицы и заполняет БД начальными данными"""
-    create_tables()
+if __name__ == "__main__":
     with SessionLocal.begin() as session:
         seed_initial_data(session)
-
-
-if __name__ == "__main__":
-    init_db()
