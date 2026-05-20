@@ -10,6 +10,7 @@ import pika
 
 from technical_document_ml_service.core.config import app_settings
 from technical_document_ml_service.db.session import SessionLocal
+from technical_document_ml_service.workers.webhook_consumer import run_webhook_consumer_loop
 from technical_document_ml_service.domain.exceptions import NotFoundError
 from technical_document_ml_service.messaging.contracts import PredictionTaskMessage
 from technical_document_ml_service.messaging.rabbitmq import (
@@ -207,6 +208,13 @@ def _build_message_handler(
 def run_prediction_worker() -> None:
     """запустить worker для обработки задач предсказания"""
     _configure_logging()
+
+    webhook_thread = threading.Thread(
+        target=run_webhook_consumer_loop,
+        name="webhook-consumer",
+        daemon=True,
+    )
+    webhook_thread.start()
 
     worker_id = app_settings.worker_id
     reconnect_delay_seconds = app_settings.worker_reconnect_delay_seconds

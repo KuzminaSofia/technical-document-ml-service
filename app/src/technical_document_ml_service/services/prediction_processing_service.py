@@ -39,7 +39,8 @@ from technical_document_ml_service.services.prediction_persistence import (
     ensure_prediction_can_start,
     persist_prediction_result,
 )
-from technical_document_ml_service.services.webhook_service import send_task_webhook
+from technical_document_ml_service.messaging.contracts import WebhookDeliveryMessage
+from technical_document_ml_service.messaging.rabbitmq import publish_webhook_delivery
 
 
 LOGGER = logging.getLogger("technical_document_ml_service.prediction_processing")
@@ -139,6 +140,37 @@ _SAFE_SKIP_MESSAGES: dict[TaskStatus, str] = {
 _ZOMBIE_STATUSES: frozenset[TaskStatus] = frozenset(
     {TaskStatus.PROCESSING, TaskStatus.VALIDATING}
 )
+
+
+def _schedule_webhook(
+    *,
+    callback_url: str,
+    task_id: UUID,
+    status: TaskStatus,
+    model_name: str,
+    result_id: UUID | None,
+    spent_credits: Decimal,
+    completed_at: datetime | None,
+    error_message: str | None,
+) -> None:
+    """поставить webhook-уведомление в очередь; сбои публикации только логируются"""
+    try:
+        msg = WebhookDeliveryMessage(
+            task_id=task_id,
+            callback_url=callback_url,
+            status=status.value,
+            model_name=model_name,
+            result_id=result_id,
+            spent_credits=str(spent_credits),
+            completed_at=completed_at.isoformat() if completed_at is not None else None,
+            error_message=error_message,
+        )
+        publish_webhook_delivery(msg)
+    except Exception:
+        LOGGER.exception(
+            "task_id=%s | Не удалось поставить webhook в очередь",
+            task_id,
+        )
 
 
 def _ensure_processing_can_start(
@@ -316,8 +348,8 @@ def process_document_prediction_task(
             session.commit()
 
             if callback_url:
-                send_task_webhook(
-                    url=callback_url,
+                _schedule_webhook(
+                    callback_url=callback_url,
                     task_id=task_id,
                     status=TaskStatus.FAILED,
                     model_name=domain_model.name,
@@ -362,8 +394,8 @@ def process_document_prediction_task(
         )
 
         if callback_url:
-            send_task_webhook(
-                url=callback_url,
+            _schedule_webhook(
+                callback_url=callback_url,
                 task_id=processing_result.task_id,
                 status=processing_result.status,
                 model_name=domain_model.name,
@@ -383,8 +415,8 @@ def process_document_prediction_task(
         _mark_task_as_failed(session, task_id=task_id, error_message=error_text)
 
         if callback_url:
-            send_task_webhook(
-                url=callback_url,
+            _schedule_webhook(
+                callback_url=callback_url,
                 task_id=task_id,
                 status=TaskStatus.FAILED,
                 model_name=domain_model.name,

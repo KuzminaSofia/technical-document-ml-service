@@ -28,6 +28,7 @@ class AppSettings:
     rabbitmq_password: str
     rabbitmq_virtual_host: str
     rabbitmq_queue_name: str
+    rabbitmq_webhook_queue_name: str
     rabbitmq_heartbeat: int
     rabbitmq_blocked_connection_timeout: int
     rabbitmq_prefetch_count: int
@@ -63,6 +64,10 @@ def load_app_settings() -> AppSettings:
         rabbitmq_queue_name=os.getenv(
             "RABBITMQ_PREDICTION_QUEUE",
             "technical_document_prediction_tasks",
+        ),
+        rabbitmq_webhook_queue_name=os.getenv(
+            "RABBITMQ_WEBHOOK_QUEUE",
+            "technical_document_webhook_delivery",
         ),
         rabbitmq_heartbeat=int(os.getenv("RABBITMQ_HEARTBEAT", "60")),
         rabbitmq_blocked_connection_timeout=int(

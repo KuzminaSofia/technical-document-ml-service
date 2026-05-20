@@ -10,7 +10,10 @@ import pika
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 
 from technical_document_ml_service.core.config import app_settings
-from technical_document_ml_service.messaging.contracts import PredictionTaskMessage
+from technical_document_ml_service.messaging.contracts import (
+    PredictionTaskMessage,
+    WebhookDeliveryMessage,
+)
 
 LOGGER = logging.getLogger("technical_document_ml_service.messaging.rabbitmq")
 
@@ -94,9 +97,11 @@ class _PersistentPublisher:
     pika.BlockingConnection не является потокобезопасным, поэтому каждый поток
     получает свое собственное долгоживущее соединение + канал
     при разрыве соединения выполняется один reconnect и повтор публикации
+    queue_name задается при создании: один инстанс = одна очередь
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, queue_name: str) -> None:
+        self._queue_name = queue_name
         self._local = threading.local()
 
     def _get_channel(self) -> BlockingChannel:
@@ -104,21 +109,23 @@ class _PersistentPublisher:
         channel: BlockingChannel | None = getattr(self._local, "channel", None)
 
         if connection is None or not connection.is_open:
-            LOGGER.debug("RabbitMQ publisher: открываем новое соединение (поток %s)", threading.current_thread().name)
+            LOGGER.debug(
+                "RabbitMQ publisher: открываем новое соединение (поток %s, queue=%s)",
+                threading.current_thread().name,
+                self._queue_name,
+            )
             connection = pika.BlockingConnection(build_connection_parameters())
             self._local.connection = connection
             channel = None
 
         if channel is None or not channel.is_open:
             channel = connection.channel()
-            # объявляем очередь при создании канала — гарантируем её существование
-            declare_prediction_queue(channel)
+            channel.queue_declare(queue=self._queue_name, durable=True)
             self._local.channel = channel
 
         return channel
 
     def _reset(self) -> None:
-        """сбросить соединение и канал текущего потока"""
         try:
             conn: BlockingConnection | None = getattr(self._local, "connection", None)
             if conn is not None and conn.is_open:
@@ -128,51 +135,48 @@ class _PersistentPublisher:
         self._local.connection = None
         self._local.channel = None
 
-    def publish(
-        self,
-        message: PredictionTaskMessage,
-        *,
-        queue_name: str | None = None,
-    ) -> None:
-        resolved_queue = queue_name or app_settings.rabbitmq_queue_name
-        body = message.to_bytes()
+    def publish(self, body: bytes, *, timestamp: int | None = None) -> None:
         properties = pika.BasicProperties(
             content_type="application/json",
             delivery_mode=2,
-            timestamp=int(message.timestamp.timestamp()),
+            **({"timestamp": timestamp} if timestamp is not None else {}),
         )
-
         try:
             channel = self._get_channel()
             channel.basic_publish(
                 exchange="",
-                routing_key=resolved_queue,
+                routing_key=self._queue_name,
                 body=body,
                 properties=properties,
             )
         except Exception:
-            # соединение разорвано — сбросить состояние и сделать одну попытку переподключения
             LOGGER.warning(
-                "RabbitMQ publisher: соединение разорвано, переподключаемся (поток %s)",
+                "RabbitMQ publisher: соединение разорвано, переподключаемся (поток %s, queue=%s)",
                 threading.current_thread().name,
+                self._queue_name,
             )
             self._reset()
             channel = self._get_channel()
             channel.basic_publish(
                 exchange="",
-                routing_key=resolved_queue,
+                routing_key=self._queue_name,
                 body=body,
                 properties=properties,
             )
 
 
-_publisher = _PersistentPublisher()
+_prediction_publisher = _PersistentPublisher(queue_name=app_settings.rabbitmq_queue_name)
+_webhook_publisher = _PersistentPublisher(queue_name=app_settings.rabbitmq_webhook_queue_name)
 
 
-def publish_prediction_task(
-    message: PredictionTaskMessage,
-    *,
-    queue_name: str | None = None,
-) -> None:
+def publish_prediction_task(message: PredictionTaskMessage) -> None:
     """опубликовать задачу предсказания через persistent publisher"""
-    _publisher.publish(message, queue_name=queue_name)
+    _prediction_publisher.publish(
+        message.to_bytes(),
+        timestamp=int(message.timestamp.timestamp()),
+    )
+
+
+def publish_webhook_delivery(message: WebhookDeliveryMessage) -> None:
+    """поставить webhook-уведомление в очередь доставки"""
+    _webhook_publisher.publish(message.to_bytes())
